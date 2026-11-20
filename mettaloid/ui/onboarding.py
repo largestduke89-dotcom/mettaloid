@@ -30,7 +30,7 @@ MINIMAL = {
     "autoClip": {"enabled": False},
     "overlay": {"enabled": False, "sound": True},
     "storage": {"autoCleanup": False},
-    "updates": {"autoCheck": True, "autoDownload": True, "autoInstall": True},
+    "updates": {"autoCheck": True},
     "findFrame": {"autoScanNewClips": False, "autoTag": False, "addBookmarks": False},
 }
 
@@ -46,7 +46,7 @@ FULL = {
     "autoClip": {"enabled": True},
     "overlay": {"enabled": True, "sound": True},
     "storage": {"autoCleanup": True, "maxGB": 100},
-    "updates": {"autoCheck": True, "autoDownload": True, "autoInstall": True},
+    "updates": {"autoCheck": True},
     "findFrame": {"autoScanNewClips": True, "autoTag": True, "addBookmarks": True},
 }
 
@@ -310,9 +310,8 @@ class OnboardingDialog(QDialog):
                 self.toggle("findFrame.autoScanNewClips"))
         sec.row("Find Frame: tag and bookmark matches", "Adds tags and bookmarks to clips where a finder matched.",
                 self.toggle("findFrame.autoTag", lambda x: self.set("findFrame.addBookmarks", x)))
-        sec.row("Check for updates", "Looks for a new version on GitHub every few hours.", self.toggle("updates.autoCheck"))
-        sec.row("Update automatically", "Downloads new versions and installs them while you're not playing. Recommended — fixes reach you without doing anything.",
-                self.toggle("updates.autoInstall", lambda x: self.set("updates.autoDownload", x)))
+        sec.row("Tell me about updates", "Checks GitHub every few hours and asks before installing anything (also in the Updates tab).",
+                self.toggle("updates.autoCheck"))
         v.addWidget(sec)
         v.addStretch(1)
 
@@ -328,7 +327,7 @@ class OnboardingDialog(QDialog):
             ("Start with Windows", on(s["general"]["launchOnStartup"])),
             ("In-game popups", on(s["overlay"]["enabled"])),
             ("Background services", "Auto-clip API " + on(s["autoClip"]["enabled"]).lower() + ", Find Frame auto-scan " + on(s["findFrame"]["autoScanNewClips"]).lower()),
-            ("Updates", "automatic" if s["updates"]["autoInstall"] and s["updates"]["autoCheck"] else "check only" if s["updates"]["autoCheck"] else "off"),
+            ("Updates", "ask me when one is available" if s["updates"]["autoCheck"] else "only when I check (Updates tab)"),
             ("Clips saved to", s["general"]["clipFolder"]),
         ]
         box = QFrame()

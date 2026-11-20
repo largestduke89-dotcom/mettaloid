@@ -788,15 +788,14 @@ class SettingsPage(Page):
         sec = self.section("updates", "Updates")
         svc = self.backend.updater_svc
         self.upd_check = btn(" Check now", "refresh", svc.check, sm=True, icon_size=14)
-        self.upd_download = btn("Download", None, svc.download, primary=True, sm=True)
-        self.upd_install = btn("Restart && update", None, self._install_update, primary=True, sm=True)
+        self.upd_download = btn("Update now", None, svc.update_now, primary=True, sm=True)
+        self.upd_install = btn("Restart && update", None, svc.update_now, primary=True, sm=True)
         self.upd_row = sec.row(f"Mettaloid {VERSION}", " ", self.upd_check, self.upd_download, self.upd_install)
         self.upd_bar = bar()
         self.upd_bar_row = sec.widget(self.upd_bar, (16, 14, 16, 14))
         self.upd_bar_row.hide()
         self.toggle(sec, "Check for updates automatically", None, "updates", "autoCheck")
-        self.toggle(sec, "Download updates automatically", None, "updates", "autoDownload")
-        self.toggle(sec, "Install updates automatically", "Installs in the background when you're not playing, recording or exporting, then reopens Mettaloid where it was.", "updates", "autoInstall")
+        sec.row("Updates tab", "Release notes, update history and downloads.", btn(" Open", "download", lambda: self.go("updates"), sm=True, icon_size=14))
         self.seg(sec, "Update channel", None, "updates", "channel", [("latest", "Stable"), ("beta", "Beta")])
         self._sync.append(lambda s: self._on_updater(dict(self.backend.updater_svc.state)))
 
@@ -810,7 +809,7 @@ class SettingsPage(Page):
             "dev": "Updates are disabled in development builds.",
             "checking": "Checking for updates…",
             "latest": "You’re up to date.",
-            "available": f"Version {u.get('available')} is available.",
+            "available": f"Version {u.get('available')} is available — see the Updates tab for what's new.",
             "downloading": f"Downloading {u.get('available')}… {round(prog * 100)}%",
             "ready": f"Version {u.get('available')} is ready to install.",
             "error": f"Update error: {u.get('error')}",
@@ -818,7 +817,7 @@ class SettingsPage(Page):
         self.upd_row.hint.setText(hint)
         self.upd_row.hint.setStyleSheet("color: #fca5a5;" if st == "error" else "")
         ready = st == "ready"
-        dl = st == "available" and not self.s["updates"]["autoDownload"]
+        dl = st == "available"
         self.upd_install.setVisible(ready)
         self.upd_download.setVisible(dl)
         self.upd_check.setVisible(not ready and not dl)

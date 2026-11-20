@@ -96,6 +96,7 @@ class App:
                     pass
         self.backend.toast.connect(self.on_toast)
         self.backend.status.connect(lambda s: self.update_tray())
+        self.backend.updater.connect(self.on_updater)
         w.deleteLater()
         from .ui.clipgrid import THUMBS
         THUMBS.clear()
@@ -148,6 +149,7 @@ class App:
         m.addSeparator()
         m.addAction("Open clip folder", lambda: os.startfile(self.backend.settings.get()["general"]["clipFolder"]))
         m.addAction("Settings", lambda: self.show_window("settings"))
+        m.addAction("Check for updates", lambda: (self.show_window("updates"), self.backend.updater_svc.check()))
         m.addSeparator()
         m.addAction("Quit Mettaloid", self.quit)
 
@@ -173,29 +175,28 @@ class App:
                 self.window.toaster.show_toast({"title": "Setup applied", "subtitle": "Your choices are saved."})
         return True
 
-    # ---------------------------------------------------------------- auto-update
-    def busy(self):
-        """True while installing an update would interrupt the user."""
-        st = self.backend.obs.status
-        if st.get("game") or st.get("recording"):
-            return True
-        if any(j["status"] == "running" for j in self.backend.list_jobs()):
-            return True
-        if any(j["status"] == "running" for j in self.backend.findframe.list_jobs()):
-            return True
-        if self.window is not None and self.window.isVisible() and self.window.isActiveWindow():
-            return True  # the user is using Mettaloid right now
-        return False
+    # ---------------------------------------------------------------- updates (prompt only, never automatic)
+    def on_updater(self, st):
+        if st.get("status") == "available":
+            v = st.get("available")
+            skip = self.backend.settings.get()["updates"].get("skipVersion")
+            if v and v != skip and v not in self.prompted:
+                self.prompted.add(v)
+                if self.window is not None and self.window.isVisible():
+                    self.show_update_prompt()
+                else:
+                    self.tray.showMessage("Mettaloid update available", f"Version {v} is ready. Click to see what's new and update.",
+                                          QSystemTrayIcon.Information, 15000)
+        elif st.get("status") == "ready" and self.backend.updater_svc.install_when_ready:
+            self.quit(update_hidden=self.window is None or not self.window.isVisible())
+        if self.window is not None:
+            self.window.set_update_badge(st.get("status") in ("available", "downloading", "ready"))
 
-    def maybe_install_update(self):
-        u = self.backend.updater_svc
-        s = self.backend.settings.get()["updates"]
-        if u.state.get("status") != "ready" or not s.get("autoInstall") or self.busy():
-            return
-        hidden = self.window is None or not self.window.isVisible()
-        import logging
-        logging.getLogger("mettaloid").info("installing update %s automatically (idle, hidden=%s)", u.state.get("available"), hidden)
-        self.quit(update_hidden=hidden)
+    def show_update_prompt(self):
+        self.show_window()
+        if self.backend.updater_svc.state.get("status") in ("available", "ready"):
+            from .ui.update_prompt import UpdatePrompt
+            UpdatePrompt(self.window).exec()
 
     def announce_version(self):
         from . import VERSION
@@ -223,9 +224,9 @@ class App:
             threading.Thread(target=self.backend.library.scan, daemon=True).start()
             self.backend.updater_svc.schedule()
         self.announce_version()
-        # check once a minute whether a downloaded update can be installed without disturbing anyone
-        self.update_timer = QTimer(interval=60000, timeout=self.maybe_install_update)
-        self.update_timer.start()
+        self.prompted = set()
+        self.backend.updater.connect(self.on_updater)
+        self.tray.messageClicked.connect(self.show_update_prompt)
         s = self.backend.settings.get()["general"]
         if not (hidden or s["startMinimized"]):
             self.show_window()

@@ -18,6 +18,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -43,8 +45,16 @@ jobs:
           if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
           python scripts/build.py
 
+      - name: Write release notes from commits
+        shell: bash
+        run: |
+          prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          git log ${prev:+$prev..}HEAD --no-merges --pretty=format:'- %s' | grep -v -E '^- Release [0-9.]+' > notes.md || true
+          [ -s notes.md ] || echo "- Maintenance release" > notes.md
+          cat notes.md
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: release/Mettaloid-Setup-*.exe
-          generate_release_notes: true
+          body_path: notes.md

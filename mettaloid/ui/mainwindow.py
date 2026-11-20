@@ -12,12 +12,12 @@ from .theme import C
 from .widgets import Badge, Toaster, bar, label
 
 NAV = [("home", "Home", "home"), ("library", "Library", "library"), ("compressor", "Compressor", "compress"),
-       ("findframe", "Find Frame", "target"), ("games", "Games", "games"), ("settings", "Settings", "settings")]
+       ("findframe", "Find Frame", "target"), ("games", "Games", "games"), ("updates", "Updates", "download"), ("settings", "Settings", "settings")]
 # page name → (module, class); pages are imported/created on first visit
 PAGES = {
     "home": ("home", "HomePage"), "library": ("library", "LibraryPage"), "clip": ("viewer", "ViewerPage"), "editor": ("editor", "EditorPage"),
     "compressor": ("compressor", "CompressorPage"), "findframe": ("findframe_page", "FindFramePage"), "games": ("games_page", "GamesPage"),
-    "settings": ("settings_page", "SettingsPage"),
+    "settings": ("settings_page", "SettingsPage"), "updates": ("updates_page", "UpdatesPage"),
 }
 NAV_FOR = {"clip": "library", "editor": "library"}
 
@@ -69,6 +69,7 @@ class MainWindow(QMainWindow):
         self._status(dict(b.obs.status))
         self._hk_failed(b.hotkeys.failed)
         dark_titlebar(self)
+        self.set_update_badge(b.updater_svc.state.get("status") in ("available", "downloading", "ready"))
         self.go("home")
 
     # ---------------------------------------------------------------- sidebar
@@ -163,6 +164,12 @@ class MainWindow(QMainWindow):
             self.banner.show()
         else:
             self.banner.hide()
+
+    def set_update_badge(self, on):
+        b = self.nav.get("updates")
+        if b:
+            b.setText("  Updates  ●" if on else "  Updates")
+            b.setStyleSheet(f"QPushButton {{ color: {C['accent']}; }}" if on else "")
 
     # ---------------------------------------------------------------- routing
     def go(self, route, **params):

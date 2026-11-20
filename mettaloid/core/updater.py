@@ -23,7 +23,10 @@ def vtuple(v):
 class Updater:
     def __init__(self, settings):
         self.settings = settings
-        self.state = {"status": "idle" if paths.FROZEN else "dev", "version": VERSION, "available": None, "progress": 0, "error": None, "notes": None}
+        self.enabled = paths.FROZEN or bool(os.environ.get("MT_UPDATER_DEV"))  # dev builds can check but never install
+        self.state = {"status": "idle" if self.enabled else "dev", "version": VERSION, "available": None, "progress": 0, "error": None,
+                      "notes": None, "releases": [], "checkedAt": None, "url": None}
+        self.install_when_ready = False
         self.on_status = []
         self.installer = None
         self.asset = None
@@ -39,8 +42,8 @@ class Updater:
             return json.load(r)
 
     def check(self):
-        if not paths.FROZEN or "YOUR_GITHUB_USERNAME" in UPDATE_REPO:
-            if paths.FROZEN:
+        if not self.enabled or "YOUR_GITHUB_USERNAME" in UPDATE_REPO:
+            if self.enabled:
                 self.set(status="error", error="Update repository is not configured (mettaloid/__init__.py → UPDATE_REPO).")
             return self.state
         threading.Thread(target=self._check, daemon=True).start()
@@ -52,23 +55,32 @@ class Updater:
             beta = self.settings.get()["updates"]["channel"] == "beta"
             rels = self._get(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=10")
             rels = [r for r in rels if not r.get("draft") and (beta or not r.get("prerelease"))]
-            if not rels:
-                return self.set(status="latest")
-            rel = max(rels, key=lambda r: vtuple(r["tag_name"]))
-            if vtuple(rel["tag_name"]) <= vtuple(VERSION):
-                return self.set(status="latest")
-            asset = next((a for a in rel["assets"] if re.match(r"Mettaloid-Setup-.*\.exe$", a["name"])), None)
-            if not asset:
-                return self.set(status="latest")
-            self.asset = asset
-            self.set(status="available", available=rel["tag_name"].lstrip("v"), notes=rel.get("body"))
-            if self.settings.get()["updates"]["autoDownload"]:
-                self._download()
+            rels = sorted(rels, key=lambda r: vtuple(r["tag_name"]), reverse=True)
+            history = [{"version": r["tag_name"].lstrip("v"), "name": r.get("name") or r["tag_name"], "date": (r.get("published_at") or "")[:10],
+                        "notes": r.get("body") or "", "url": r.get("html_url"), "prerelease": r.get("prerelease", False)} for r in rels]
+            now = time.strftime("%Y-%m-%d %H:%M")
+            is_setup = lambda a: re.match(r"Mettaloid-Setup-.*\.exe$", a["name"])  # noqa: E731
+            newer = [r for r in rels if vtuple(r["tag_name"]) > vtuple(VERSION) and any(is_setup(a) for a in r["assets"])]
+            if not newer:
+                return self.set(status="latest", releases=history, checkedAt=now, available=None)
+            rel = newer[0]
+            self.asset = next(a for a in rel["assets"] if is_setup(a))
+            notes = "\n\n".join(f"## {r['tag_name']}\n{r.get('body') or ''}" for r in newer)
+            self.set(status="available", available=rel["tag_name"].lstrip("v"), notes=notes, releases=history, checkedAt=now,
+                     url=rel.get("html_url"), size=self.asset["size"])
         except Exception as e:  # noqa: BLE001
             self.set(status="error", error=str(e).splitlines()[0])
 
     def download(self):
         threading.Thread(target=self._download, daemon=True).start()
+
+    def update_now(self):
+        """User clicked "Update now": download if needed; the app then installs and relaunches."""
+        self.install_when_ready = True
+        if self.state.get("status") == "ready":
+            self.set(status="ready")
+        else:
+            self.download()
 
     def _download(self):
         a = self.asset
@@ -129,8 +141,9 @@ class Updater:
         def loop():
             time.sleep(15)
             while True:
-                if self.settings.get()["updates"]["autoCheck"]:
-                    self._check() if paths.FROZEN and "YOUR_GITHUB_USERNAME" not in UPDATE_REPO else None
+                if self.settings.get()["updates"]["autoCheck"] and self.enabled and "YOUR_GITHUB_USERNAME" not in UPDATE_REPO:
+                    if self.state.get("status") not in ("downloading", "ready"):
+                        self._check()
                 time.sleep(4 * 3600)
         threading.Thread(target=loop, daemon=True).start()
 

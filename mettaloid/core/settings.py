@@ -33,7 +33,7 @@ DEFAULTS = {
     "storage": {"autoCleanup": False, "maxGB": 100, "keepFavorites": True},
     "editor": {"fontPath": "C:/Windows/Fonts/arialbd.ttf"},
     "compressor": {"defaultTargetMB": 50, "encoder": "auto", "twoPass": True, "autoDownscale": True, "audioKbps": 128},
-    "updates": {"autoCheck": True, "autoDownload": True, "autoInstall": True, "channel": "latest"},
+    "updates": {"autoCheck": True, "channel": "latest", "skipVersion": ""},
     "lastVersion": "",
     "games": {"profiles": {}, "custom": [], "disabled": []},
     "findFrame": {

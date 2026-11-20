@@ -417,6 +417,8 @@ class EditorPage(Page):
         tl.select_segment.connect(lambda i: (setattr(self, "sel_seg", i), self.refresh_panels()))
         tl.select_text.connect(self.select_text)
         tl.edit_begin.connect(self.snapshot)
+        tl.zoom_wheel.connect(self.wheel_zoom)
+        tl.scroll_wheel.connect(lambda d: self.tl_scroll.horizontalScrollBar().setValue(self.tl_scroll.horizontalScrollBar().value() - d))
         tl.segment_trim.connect(lambda i, a, b_: self.live(lambda p: p["segments"][i].update(start=a, end=b_)))
         pv = self.preview
         pv.edit_begin.connect(self.snapshot)
@@ -823,6 +825,16 @@ class EditorPage(Page):
         self.timeline.zoom = z
         self.zoom_s.set_value(z)
         self.layout_timeline()
+
+    def wheel_zoom(self, factor, x):
+        """Zoom the timeline around the mouse position, keeping the point under the cursor in place."""
+        sb = self.tl_scroll.horizontalScrollBar()
+        old_w = max(1, self.timeline.width())
+        view_x = x - sb.value()
+        self.set_zoom(self.timeline.zoom * factor)
+        new_x = x * self.timeline.width() / old_w
+        sb.setValue(int(new_x - view_x))
+        QTimer.singleShot(0, lambda: sb.setValue(int(new_x - view_x)))
 
     def layout_timeline(self):
         w = int(max(200, (self.tl_scroll.viewport().width() - 2) * self.timeline.zoom))

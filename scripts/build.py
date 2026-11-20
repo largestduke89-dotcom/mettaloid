@@ -33,6 +33,34 @@ def run(cmd, **kw):
     subprocess.run(cmd, check=True, cwd=ROOT, **kw)
 
 
+def smoke_test():
+    """Launch the packaged app (UI only, throwaway profile) and make sure it starts
+    and renders every page. Catches missing modules before anything is published."""
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="mt-smoke-")
+    ud, shots = os.path.join(tmp, "ud"), os.path.join(tmp, "shots")
+    os.makedirs(ud)
+    with open(os.path.join(ud, "settings.json"), "w") as f:
+        f.write('{"general": {"clipFolder": "%s", "launchOnStartup": false}}' % os.path.join(tmp, "clips").replace("\\", "/"))
+    env = dict(os.environ, MT_NO_RECORDER="1", MT_USER_DATA=ud, MT_SNAPSHOT_DIR=shots,
+               MT_SNAPSHOT_ROUTES="home,library,compressor,findframe,games,settings", MT_SNAPSHOT_WAIT="1500")
+    try:
+        subprocess.run([os.path.join(DIST, "Mettaloid.exe")], env=env, timeout=180)
+    except subprocess.TimeoutExpired:
+        raise SystemExit("smoke test: app did not exit")
+    log = open(os.path.join(ud, "logs", "mettaloid.log"), encoding="utf-8").read() if os.path.exists(os.path.join(ud, "logs", "mettaloid.log")) else ""
+    errs = open(os.path.join(shots, "errors.txt"), encoding="utf-8").read().strip() if os.path.exists(os.path.join(shots, "errors.txt")) else "no errors.txt (app crashed?)"
+    pages = [f for f in os.listdir(shots)] if os.path.isdir(shots) else []
+    if errs or "CRITICAL" in log or len([p for p in pages if p.endswith(".png")]) < 6:
+        print(log[-3000:])
+        raise SystemExit(f"smoke test FAILED: {errs[:2000]}")
+    # the Find Frame engine entry point must work too
+    out = subprocess.run([os.path.join(DIST, "Mettaloid.exe"), "--engine", "--version"], capture_output=True, text=True, timeout=60).stdout
+    if '"version"' not in out:
+        raise SystemExit("smoke test FAILED: engine entry point: " + out[:500])
+    print("smoke test passed: app starts, all pages render, engine runs")
+
+
 def main():
     if not os.path.exists(os.path.join(ROOT, "vendor", "obs", "bin", "64bit", "obs64.exe")) or not os.path.exists(os.path.join(ROOT, "vendor", "ffmpeg", "ffmpeg.exe")):
         run([sys.executable, "scripts/fetch_deps.py"])
@@ -76,6 +104,7 @@ def main():
     shutil.copytree(os.path.join(ROOT, "vendor", "ffmpeg"), os.path.join(vend, "ffmpeg"))
     shutil.copytree(os.path.join(ROOT, "vendor", "obs"), os.path.join(vend, "obs"), ignore=shutil.ignore_patterns("config", "*.pdb"))
     print("bundle ready:", DIST)
+    smoke_test()
 
     if "--no-installer" in sys.argv:
         return

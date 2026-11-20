@@ -189,6 +189,8 @@ class ProfileDialog(Dialog):
 class GamesPage(Page):
     def __init__(self, win):
         super().__init__(win, "Games")
+        self.top.insertWidget(0, btn("Settings", "back", lambda: self.go("settings"), ghost=True, sm=True))
+        self.show_all = False
         self.count_lb = label("", "dim")
         self.top.addWidget(self.count_lb)
         self.top.addStretch(1)
@@ -199,7 +201,9 @@ class GamesPage(Page):
         self.search.setFixedWidth(220)
         self.search.textChanged.connect(lambda _: self.refresh())
         self.top.addWidget(self.search)
-        self.top.addWidget(btn(" Add a game", "plus", self.add_game, primary=True, sm=True, icon_size=14))
+        self.all_b = btn("Show all supported games", None, self.toggle_all, sm=True)
+        self.top.addWidget(self.all_b)
+        self.top.addWidget(btn(" Add a game", "plus", self.add_game, sm=True, icon_size=14))
         self.data = None
         self.dialog = None
 
@@ -224,14 +228,15 @@ class GamesPage(Page):
         cl.addWidget(btn("Recording profile", on_click=self._edit_current))
         body.addWidget(self.cur)
 
-        hint = label("Not listed? Click <b>Add a game</b> and pick its .exe. Games with a custom profile record with their own resolution, "
-                     "frame rate, replay length and mic settings.", "dim", wrap=True)
+        hint = label("Games show up here once you've clipped them. Mettaloid detects supported games by itself — you only need this page to "
+                     "give a game its own recording profile, ignore a game, or add one that isn't detected.", "dim", wrap=True)
         hint.setTextFormat(Qt.RichText)
         hint.setStyleSheet("font-size: 12.5px;")
         body.addWidget(hint)
         self.grid = GameGrid()
         body.addWidget(self.grid)
-        self.empty = label("No games match your search.", "muted")
+        self.empty = label("", "muted")
+        self.empty.setWordWrap(True)
         body.addWidget(self.empty)
         body.addStretch(1)
         self.cards = {}
@@ -274,7 +279,13 @@ class GamesPage(Page):
                 counts[c["game"]["id"]] = counts.get(c["game"]["id"], 0) + 1
 
         allg = self.all_games()
-        self.count_lb.setText(f"{len(allg)} games recognized automatically")
+
+        def mine(g):
+            return (g.get("custom") or counts.get(g["id"]) or g["id"] == cur_id or g["id"] in disabled
+                    or (profiles.get(g["id"]) or {}).get("enabled"))
+        n_mine = sum(1 for g in allg if mine(g))
+        self.count_lb.setText(f"{n_mine} of your games" + (f" · {len(allg)} supported" if self.show_all else ""))
+        self.all_b.setText("Show only my games" if self.show_all else "Show all supported games")
         self.cur.setVisible(bool(cur))
         if cur:
             self.cur_icon.set_name(cur["name"])
@@ -282,7 +293,10 @@ class GamesPage(Page):
             self.cur_sub.setText(f"Running now · {cur.get('exe') or ''}" + (" · custom profile active" if (profiles.get(cur["id"]) or {}).get("enabled") else ""))
 
         q = self.search.text().strip().lower()
-        lst = [g for g in allg if not q or q in g["name"].lower()]
+        if q:
+            lst = [g for g in allg if q in g["name"].lower()]
+        else:
+            lst = allg if self.show_all else [g for g in allg if mine(g)]
         new_cards = {}
         ordered = []
         for g in lst:
@@ -300,7 +314,13 @@ class GamesPage(Page):
             self.cards.pop(key).deleteLater()
         self.cards.update(new_cards)
         self.grid.set_cards(ordered)
+        self.empty.setText("No games match your search." if q else
+                           "No games yet. They'll appear here after you clip one — supported games are detected automatically.")
         self.empty.setVisible(not lst)
+
+    def toggle_all(self):
+        self.show_all = not self.show_all
+        self.refresh()
 
     def _edit_current(self):
         cur = self.backend.obs.status.get("game")

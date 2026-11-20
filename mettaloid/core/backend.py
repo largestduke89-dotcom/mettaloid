@@ -13,7 +13,6 @@ from PySide6.QtCore import QMimeData, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
 from . import paths, render
-from .api_server import ApiServer
 from .findframe import FindFrame
 from .games import BUILTIN, GameDetector
 from .hotkeys import Hotkeys
@@ -57,7 +56,6 @@ class Backend(QObject):
         self.hotkeys = Hotkeys()
         self.updater_svc = Updater(self.settings)
         self.findframe = FindFrame(self.settings, self.library, lambda: bool(self.obs.status["game"]))
-        self.api = ApiServer(self.settings, self._api_clip, self._api_bookmark, lambda: dict(self.obs.status))
         self.jobs = {}
         self._pending_patch = None
         self._pending_timer = None
@@ -92,7 +90,6 @@ class Backend(QObject):
         self.obs.start()
         self.detector.start()
         self.register_hotkeys()
-        self.api.restart()
         self.updater_svc.schedule()
         self.library.set_watch_folders(self.settings.get()["watchFolders"])
         threading.Thread(target=self.library.scan, daemon=True).start()
@@ -101,7 +98,6 @@ class Backend(QObject):
     def shutdown(self):
         self.hotkeys.stop()
         self.detector.stop()
-        self.api.close()
         for j in self.jobs.values():
             if j["status"] == "running" and j.get("_job"):
                 j["_job"].cancel()
@@ -220,18 +216,6 @@ class Backend(QObject):
             self.notify("Replay buffer on" if self.obs.status["replayActive"] else "Replay buffer paused", "", "", "mark")
         self.obs.toggle_replay().add_done_callback(done)
 
-    def _api_clip(self, event, before, after):
-        if self.obs.status["recording"]:
-            bm = self.obs.add_bookmark(event)
-            self.notify(event, "Bookmarked in session", "mark", "mark")
-            return {"ok": True, "bookmark": bm}
-        fut = self.obs.save_clip(seconds=before + after, source="auto", event=event, label=event, delay=after)
-        self.notify(f"Auto clip: {event}", self.obs.status["game"]["name"] if self.obs.status["game"] else "")
-        return {"ok": True, "raw": fut.result(timeout=after + 30)}
-
-    def _api_bookmark(self, label):
-        return self.bookmark(label) or {"ok": True}
-
     # ---------------------------------------------------------------- hotkeys
     def register_hotkeys(self):
         h = self.settings.get()["hotkeys"]
@@ -250,8 +234,6 @@ class Backend(QObject):
             self.register_hotkeys()
         if "general" in patch and "launchOnStartup" in patch["general"]:
             self.apply_login_item()
-        if "autoClip" in patch:
-            self.api.restart()
         if "watchFolders" in patch:
             self.library.set_watch_folders(data["watchFolders"])
         if "storage" in patch:
@@ -264,7 +246,7 @@ class Backend(QObject):
         return data
 
     def queue_recorder_update(self, patch):
-        relevant = {"recording", "quality", "audio", "hotkeys", "autoClip", "games", "general", "advanced", "performance"}
+        relevant = {"recording", "quality", "audio", "hotkeys", "games", "general", "advanced", "performance"}
         if not relevant & set(patch):
             return
         self._pending_patch = deep_merge(self._pending_patch or {}, patch)

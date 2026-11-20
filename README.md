@@ -23,7 +23,7 @@ mettaloid/
     backend.py         owns services; all signals are delivered on the UI thread
     obs_manager.py     OBS lifecycle, replay/record, hot profile-swap reconfigure, stats, adaptive preset
     obs_config.py  obs_ws.py  planner.py  render.py  ffmpeg.py  library.py  games.py
-    hotkeys.py (RegisterHotKey)  api_server.py  updater.py  findframe.py  settings.py  paths.py
+    hotkeys.py (RegisterHotKey)  updater.py  findframe.py  settings.py  paths.py
   engine/findframe_engine.py
   ui/                  widgets, theme, icons, clip grid, video, overlay, main window
     pages/             home, library, viewer, editor (+timeline), compressor, findframe_page, games_page, settings_page
@@ -87,7 +87,6 @@ Installed apps check every 4 hours (and 15 s after launch) and download in the b
 - **Find Frame**:
   - Pause a clip, press **B**, draw a box, then search this clip, the game or the whole library.
   - Saved finders, library scans, auto-scan of new clips, auto tags and bookmarks, and montages of matches.
-- **Auto-clip API**: `POST http://127.0.0.1:37737/clip {"event":"Ace"}`.
 
 ## Licensing
 

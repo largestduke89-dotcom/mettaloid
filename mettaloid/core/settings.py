@@ -28,7 +28,6 @@ DEFAULTS = {
         "clips": [{"accelerator": "F8", "seconds": 60, "label": "Save clip"}, {"accelerator": "Shift+F8", "seconds": 15, "label": "Quick clip"}],
         "toggleRecording": "F9", "bookmark": "F10", "screenshot": "F11", "toggleMic": "Alt+M", "toggleReplay": "",
     },
-    "autoClip": {"enabled": True, "apiPort": 37737, "secondsBefore": 15, "secondsAfter": 5},
     "overlay": {"enabled": True, "position": "top-right", "sound": True, "soundVolume": 0.6},
     "storage": {"autoCleanup": False, "maxGB": 100, "keepFavorites": True},
     "editor": {"fontPath": "C:/Windows/Fonts/arialbd.ttf"},
@@ -74,6 +73,7 @@ class Settings:
                 saved = json.load(f)
         except Exception:  # noqa: BLE001
             pass
+        saved.pop("autoClip", None)  # feature removed
         self.data = deep_merge(DEFAULTS, saved)
         if existed and "onboarded" not in saved:
             self.data["onboarded"] = True  # installs from before the wizard existed

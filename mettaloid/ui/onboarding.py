@@ -27,7 +27,6 @@ MINIMAL = {
     "audio": {"micEnabled": False, "separateDiscordTrack": False, "noiseSuppression": True, "gameAudioOnly": False},
     "hotkeys": {"clips": [{"accelerator": "F8", "seconds": 30, "label": "Save clip"}], "toggleRecording": "", "bookmark": "", "screenshot": "",
                 "toggleMic": "", "toggleReplay": ""},
-    "autoClip": {"enabled": False},
     "overlay": {"enabled": False, "sound": True},
     "storage": {"autoCleanup": False},
     "updates": {"autoCheck": True},
@@ -43,7 +42,6 @@ FULL = {
     "audio": {"micEnabled": True, "separateDiscordTrack": True, "noiseSuppression": True, "gameAudioOnly": False},
     "hotkeys": {"clips": [{"accelerator": "F8", "seconds": 60, "label": "Save clip"}, {"accelerator": "Shift+F8", "seconds": 15, "label": "Quick clip"}],
                 "toggleRecording": "F9", "bookmark": "F10", "screenshot": "F11", "toggleMic": "Alt+M", "toggleReplay": ""},
-    "autoClip": {"enabled": True},
     "overlay": {"enabled": True, "sound": True},
     "storage": {"autoCleanup": True, "maxGB": 100},
     "updates": {"autoCheck": True},
@@ -163,8 +161,8 @@ class OnboardingDialog(QDialog):
         for key, title, desc in (
             ("minimal", "Minimal  (recommended)", "Just clipping. No startup launch, no popups, no background services, one hotkey (F8), mic off. "
                                                  "Lowest impact on your PC."),
-            ("full", "Everything on", "Starts with Windows, in-game popups, mic + separate Discord track, all hotkeys, automatic Find Frame scans, "
-                                      "local auto-clip API, automatic cleanup and updates."),
+            ("full", "Everything on", "Starts with Windows, in-game popups, mic + separate Discord track, all hotkeys, automatic Find Frame scans "
+                                      "and automatic cleanup."),
             ("custom", "Custom", "Start from Minimal and decide on each option in the next steps."),
         ):
             card = QPushButton()
@@ -304,8 +302,6 @@ class OnboardingDialog(QDialog):
         sec.row("Start with Windows", "Launch in the tray when you log in, so it's ready when you play.", self.toggle("general.launchOnStartup"))
         sec.row("In-game popups", "A small notification when a clip is saved (borderless/windowed games).", self.toggle("overlay.enabled"))
         sec.row("Capture sounds", "A short sound when a clip is saved — the only feedback in fullscreen games.", self.toggle("overlay.sound"))
-        sec.row("Local auto-clip API", "Runs a small local web server so mods/scripts/Stream Deck can trigger clips. Only needed if you use one.",
-                self.toggle("autoClip.enabled"))
         sec.row("Find Frame: scan new clips automatically", "Checks every new clip against your saved finders in the background.",
                 self.toggle("findFrame.autoScanNewClips"))
         sec.row("Find Frame: tag and bookmark matches", "Adds tags and bookmarks to clips where a finder matched.",
@@ -326,7 +322,7 @@ class OnboardingDialog(QDialog):
             ("Microphone", on(s["audio"]["micEnabled"])),
             ("Start with Windows", on(s["general"]["launchOnStartup"])),
             ("In-game popups", on(s["overlay"]["enabled"])),
-            ("Background services", "Auto-clip API " + on(s["autoClip"]["enabled"]).lower() + ", Find Frame auto-scan " + on(s["findFrame"]["autoScanNewClips"]).lower()),
+            ("Find Frame auto-scan", on(s["findFrame"]["autoScanNewClips"])),
             ("Updates", "ask me when one is available" if s["updates"]["autoCheck"] else "only when I check (Updates tab)"),
             ("Clips saved to", s["general"]["clipFolder"]),
         ]

@@ -17,7 +17,7 @@ from .home import QCOLOR, BufferControl
 
 SECTIONS = [
     ("recording", "Recording"), ("performance", "Performance & memory"), ("hotkeys", "Hotkeys"), ("quality", "Quality"), ("audio", "Audio"),
-    ("autoclip", "Auto clipping"), ("overlay", "Overlay & sounds"), ("storage", "Storage"), ("compressor", "Compressor"), ("editor", "Editor"),
+    ("games", "Games"), ("overlay", "Overlay & sounds"), ("storage", "Storage"), ("compressor", "Compressor"), ("editor", "Editor"),
     ("updates", "Updates"), ("windows", "Windows"), ("advanced", "Advanced"),
 ]
 MEM_STEPS = [256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384]
@@ -234,7 +234,7 @@ class SettingsPage(Page):
         self._build_hotkeys()
         self._build_quality()
         self._build_audio()
-        self._build_autoclip()
+        self._build_games()
         self._build_overlay()
         self._build_storage()
         self._build_compressor()
@@ -610,43 +610,11 @@ class SettingsPage(Page):
         except Exception as e:  # noqa: BLE001
             fail(e)
 
-    # ---------------------------------------------------------------- auto clip
-    def _build_autoclip(self):
-        sec = self.section("autoclip", "Auto clipping")
-        self.toggle(sec, "Auto-clip API", "Lets games, mods, scripts or a Stream Deck trigger clips on events (kills, wins…).", "autoClip", "enabled")
-        on = lambda s: s["autoClip"]["enabled"]  # noqa: E731
-        self.show_if(self.combo(sec, "Seconds before the event", None, "autoClip", "secondsBefore", [(v, f"{v}s") for v in (5, 10, 15, 20, 30, 45, 60)]), on)
-        self.show_if(self.combo(sec, "Seconds after the event", None, "autoClip", "secondsAfter", [(v, f"{v}s") for v in (0, 2, 3, 5, 8, 10, 15)]), on)
-        port = QLineEdit(str(self.s["autoClip"]["apiPort"]))
-        port.setValidator(QIntValidator(1024, 65535, port))
-        port.setFixedWidth(100)
-
-        def commit_port():
-            v = int(port.text()) if port.hasAcceptableInput() else self.s["autoClip"]["apiPort"]
-            port.setText(str(v))
-            if v != self.s["autoClip"]["apiPort"]:
-                self._apply({"autoClip": {"apiPort": v}})
-        port.editingFinished.connect(commit_port)
-        self._sync.append(lambda s: None if port.hasFocus() else port.setText(str(s["autoClip"]["apiPort"])))
-        self.show_if(sec.row("Port", None, port), on)
-        snip = QWidget()
-        sl = QVBoxLayout(snip)
-        sl.setContentsMargins(0, 0, 0, 0)
-        sl.setSpacing(8)
-        sl.addWidget(label("Trigger from anything on this PC (while recording a session, events become bookmarks):", "dim", wrap=True))
-        code = QLabel()
-        code.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        code.setStyleSheet(f"{MONO} background: {C['bg']}; border: 1px solid {C['line']}; border-radius: 8px; padding: 10px 12px; color: {C['text2']};")
-        code.setWordWrap(True)
-        sl.addWidget(code)
-
-        def sync_code(s):
-            p = s["autoClip"]["apiPort"]
-            code.setText(f'curl -X POST http://127.0.0.1:{p}/clip -d "{{\\"event\\":\\"Ace\\",\\"before\\":20,\\"after\\":5}}"\n'
-                         f'curl -X POST http://127.0.0.1:{p}/bookmark -d "{{\\"label\\":\\"Clutch\\"}}"\n'
-                         f"curl http://127.0.0.1:{p}/status")
-        self._sync.append(sync_code)
-        self.show_if(sec.widget(snip), on)
+    # ---------------------------------------------------------------- games
+    def _build_games(self):
+        sec = self.section("games", "Games")
+        sec.row("Games & recording profiles", "Supported games are detected automatically. Give a game its own quality/replay settings, "
+                "ignore a game, or add one that isn't detected.", btn(" Manage", "games", lambda: self.go("games"), sm=True, icon_size=14))
 
     # ---------------------------------------------------------------- overlay
     def _build_overlay(self):

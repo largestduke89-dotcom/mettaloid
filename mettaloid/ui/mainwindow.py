@@ -12,14 +12,14 @@ from .theme import C
 from .widgets import Badge, Toaster, bar, label
 
 NAV = [("home", "Home", "home"), ("library", "Library", "library"), ("compressor", "Compressor", "compress"),
-       ("findframe", "Find Frame", "target"), ("games", "Games", "games"), ("updates", "Updates", "download"), ("settings", "Settings", "settings")]
+       ("findframe", "Find Frame", "target"), ("updates", "Updates", "download"), ("settings", "Settings", "settings")]
 # page name → (module, class); pages are imported/created on first visit
 PAGES = {
     "home": ("home", "HomePage"), "library": ("library", "LibraryPage"), "clip": ("viewer", "ViewerPage"), "editor": ("editor", "EditorPage"),
     "compressor": ("compressor", "CompressorPage"), "findframe": ("findframe_page", "FindFramePage"), "games": ("games_page", "GamesPage"),
     "settings": ("settings_page", "SettingsPage"), "updates": ("updates_page", "UpdatesPage"),
 }
-NAV_FOR = {"clip": "library", "editor": "library"}
+NAV_FOR = {"clip": "library", "editor": "library", "games": "settings"}
 
 
 def dark_titlebar(w):

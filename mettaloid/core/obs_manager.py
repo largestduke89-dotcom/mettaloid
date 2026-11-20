@@ -161,8 +161,7 @@ class ObsManager:
         s = s or self.settings.get()
         base = (profile or {}).get("replaySeconds") or s["recording"]["replaySeconds"]
         hk = max([int(c.get("seconds") or 0) for c in s["hotkeys"]["clips"]] + [0])
-        auto = s["autoClip"]["secondsBefore"] + s["autoClip"]["secondsAfter"] if s["autoClip"]["enabled"] else 0
-        return min(MAX_BUFFER, max(5, base, hk, auto))
+        return min(MAX_BUFFER, max(5, base, hk))
 
     def base_size(self, s=None):
         s = s or self.settings.get()

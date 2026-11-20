@@ -148,13 +148,13 @@ class App:
         m.addSeparator()
         m.addAction("Quit Mettaloid", self.quit)
 
-    def quit(self):
+    def quit(self, update_hidden=None):
         self.quitting = True
         if self.window:
             self.window.close()
         self.tray.hide()
         self.backend.shutdown()
-        self.backend.updater_svc.install_on_quit()
+        self.backend.updater_svc.install_on_quit(hidden=bool(update_hidden))
         self.qt.quit()
 
     def run_onboarding(self, parent=None):
@@ -170,6 +170,40 @@ class App:
                 self.window.toaster.show_toast({"title": "Setup applied", "subtitle": "Your choices are saved."})
         return True
 
+    # ---------------------------------------------------------------- auto-update
+    def busy(self):
+        """True while installing an update would interrupt the user."""
+        st = self.backend.obs.status
+        if st.get("game") or st.get("recording"):
+            return True
+        if any(j["status"] == "running" for j in self.backend.list_jobs()):
+            return True
+        if any(j["status"] == "running" for j in self.backend.findframe.list_jobs()):
+            return True
+        if self.window is not None and self.window.isVisible() and self.window.isActiveWindow():
+            return True  # the user is using Mettaloid right now
+        return False
+
+    def maybe_install_update(self):
+        u = self.backend.updater_svc
+        s = self.backend.settings.get()["updates"]
+        if u.state.get("status") != "ready" or not s.get("autoInstall") or self.busy():
+            return
+        hidden = self.window is None or not self.window.isVisible()
+        import logging
+        logging.getLogger("mettaloid").info("installing update %s automatically (idle, hidden=%s)", u.state.get("available"), hidden)
+        self.quit(update_hidden=hidden)
+
+    def announce_version(self):
+        from . import VERSION
+        s = self.backend.settings.get()
+        last = s.get("lastVersion") or ""
+        if last and last != VERSION:
+            self.backend.notify(f"Updated to Mettaloid {VERSION}", f"from {last}", "", "mark")
+        if last != VERSION:
+            self.backend.settings.update({"lastVersion": VERSION})
+        self.backend.updater_svc.cleanup()
+
     def run(self, hidden=False):
         if not self.claim_instance():
             return 0
@@ -184,6 +218,11 @@ class App:
         else:
             import threading
             threading.Thread(target=self.backend.library.scan, daemon=True).start()
+            self.backend.updater_svc.schedule()
+        self.announce_version()
+        # check once a minute whether a downloaded update can be installed without disturbing anyone
+        self.update_timer = QTimer(interval=60000, timeout=self.maybe_install_update)
+        self.update_timer.start()
         s = self.backend.settings.get()["general"]
         if not (hidden or s["startMinimized"]):
             self.show_window()

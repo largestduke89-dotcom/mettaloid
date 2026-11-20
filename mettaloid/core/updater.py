@@ -100,13 +100,30 @@ class Updater:
         except Exception as e:  # noqa: BLE001
             self.set(status="error", error=str(e))
 
-    def install_on_quit(self):
-        """Launch the downloaded installer silently (detached). Call right before exiting."""
+    def install_on_quit(self, hidden=False):
+        """Launch the downloaded installer silently (detached). Call right before exiting.
+        The installer relaunches Mettaloid afterwards (in the tray when hidden=True)."""
         if self.installer and os.path.exists(self.installer):
-            subprocess.Popen([self.installer, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],
-                             creationflags=0x00000008 | 0x00000200, close_fds=True)  # DETACHED_PROCESS | NEW_PROCESS_GROUP
+            args = [self.installer, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"]
+            if hidden:
+                args.append("/mtargs=--hidden")
+            subprocess.Popen(args, creationflags=0x00000008 | 0x00000200, close_fds=True)  # DETACHED_PROCESS | NEW_PROCESS_GROUP
             return True
         return False
+
+    @staticmethod
+    def cleanup():
+        """Delete downloaded installers for versions we're already running."""
+        d = os.path.join(paths.USER_DATA, "updates")
+        if not os.path.isdir(d):
+            return
+        for f in os.listdir(d):
+            m = re.match(r"Mettaloid-Setup-(.+)\.exe(\.part)?$", f)
+            if m and vtuple(m.group(1)) <= vtuple(VERSION):
+                try:
+                    os.remove(os.path.join(d, f))
+                except OSError:
+                    pass
 
     def schedule(self):
         def loop():

@@ -51,7 +51,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; interactive install: offer to launch
 Filename: "{app}\Mettaloid.exe"; Description: "Launch Mettaloid"; Flags: nowait postinstall skipifsilent
 ; silent auto-update: relaunch automatically
-Filename: "{app}\Mettaloid.exe"; Flags: nowait skipifnotsilent
+Filename: "{app}\Mettaloid.exe"; Parameters: "{param:mtargs|}"; Flags: nowait skipifnotsilent
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/C taskkill /IM obs64.exe /F"; Flags: runhidden; RunOnceId: "KillObs"

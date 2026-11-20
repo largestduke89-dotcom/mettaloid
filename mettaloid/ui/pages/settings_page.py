@@ -795,7 +795,8 @@ class SettingsPage(Page):
         self.upd_bar_row = sec.widget(self.upd_bar, (16, 14, 16, 14))
         self.upd_bar_row.hide()
         self.toggle(sec, "Check for updates automatically", None, "updates", "autoCheck")
-        self.toggle(sec, "Download updates automatically", "Installed the next time Mettaloid restarts.", "updates", "autoDownload")
+        self.toggle(sec, "Download updates automatically", None, "updates", "autoDownload")
+        self.toggle(sec, "Install updates automatically", "Installs in the background when you're not playing, recording or exporting, then reopens Mettaloid where it was.", "updates", "autoInstall")
         self.seg(sec, "Update channel", None, "updates", "channel", [("latest", "Stable"), ("beta", "Beta")])
         self._sync.append(lambda s: self._on_updater(dict(self.backend.updater_svc.state)))
 

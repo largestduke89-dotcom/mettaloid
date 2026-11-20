@@ -21,7 +21,7 @@ REPLAY_STEPS = [10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 600, 900, 1200]
 # Lean: only what's needed to clip. Every optional extra is off.
 MINIMAL = {
     "general": {"launchOnStartup": False, "startMinimized": False, "closeToTray": True},
-    "recording": {"replayEnabled": True, "replaySeconds": 30, "recordDesktopWhenNoGame": False, "autoRecordSessions": False, "captureMode": "game"},
+    "recording": {"replayEnabled": True, "replaySeconds": 30, "recordDesktopWhenNoGame": True, "autoRecordSessions": False, "captureMode": "game"},
     "performance": {"replayMemoryMB": 0, "autoQuality": True, "maxResolution": "native", "maxFps": 60, "encoderPreset": "balanced",
                     "adaptive": True, "freeUiWhenHidden": True, "lowPriorityJobs": True},
     "audio": {"micEnabled": False, "separateDiscordTrack": False, "noiseSuppression": True, "gameAudioOnly": False},
@@ -36,7 +36,7 @@ MINIMAL = {
 # Everything Mettaloid can do, switched on.
 FULL = {
     "general": {"launchOnStartup": True, "startMinimized": True, "closeToTray": True},
-    "recording": {"replayEnabled": True, "replaySeconds": 60, "recordDesktopWhenNoGame": False, "autoRecordSessions": False, "captureMode": "game"},
+    "recording": {"replayEnabled": True, "replaySeconds": 60, "recordDesktopWhenNoGame": True, "autoRecordSessions": False, "captureMode": "game"},
     "performance": {"replayMemoryMB": 0, "autoQuality": True, "maxResolution": "native", "maxFps": 60, "encoderPreset": "balanced",
                     "adaptive": True, "freeUiWhenHidden": True, "lowPriorityJobs": True},
     "audio": {"micEnabled": True, "separateDiscordTrack": True, "noiseSuppression": True, "gameAudioOnly": False},
@@ -209,7 +209,7 @@ class OnboardingDialog(QDialog):
         sec.row("Replay length", "How far back a clip goes. Longer uses more RAM; quality is adjusted automatically to fit.", sl, wide=True)
         sec.row("What to capture", "Game capture hooks the game directly (fastest). Display records a whole monitor.",
                 Seg([("game", "Game"), ("desktop", "Display")], self.get("recording.captureMode"), on_change=lambda x: self.set("recording.captureMode", x)))
-        sec.row("Clip the desktop when no game is running", "Keeps recording outside of games. Uses resources all the time.",
+        sec.row("Record the whole screen when no game is detected", "So you can always clip, even in games Mettaloid doesn't recognise.",
                 self.toggle("recording.recordDesktopWhenNoGame"))
         sec.row("Record whole sessions automatically", "Records every game from start to finish. Uses a lot of disk space.",
                 self.toggle("recording.autoRecordSessions"))

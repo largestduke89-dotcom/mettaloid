@@ -10,7 +10,7 @@ DEFAULTS = {
     "onboarded": False,  # first-run setup wizard completed
     "general": {"launchOnStartup": False, "startMinimized": False, "closeToTray": True, "clipFolder": ""},
     "recording": {
-        "replayEnabled": True, "replaySeconds": 60, "recordDesktopWhenNoGame": False, "autoRecordSessions": False,
+        "replayEnabled": True, "replaySeconds": 60, "recordDesktopWhenNoGame": True, "autoRecordSessions": False,
         "captureMode": "game", "monitorIndex": 0, "fileFormat": "mp4",
     },
     "performance": {
@@ -34,7 +34,8 @@ DEFAULTS = {
     "compressor": {"defaultTargetMB": 50, "encoder": "auto", "twoPass": True, "autoDownscale": True, "audioKbps": 128},
     "updates": {"autoCheck": True, "channel": "latest", "skipVersion": ""},
     "lastVersion": "",
-    "games": {"profiles": {}, "custom": [], "disabled": []},
+    "games": {"profiles": {}, "custom": [], "disabled": [], "captureMethod": {}},
+    "migrations": [],
     "findFrame": {
         "method": "auto", "threshold": 30, "templateThreshold": 0.8, "nfeatures": 1000, "ratio": 0.9, "matcher": "bf",
         "verifyGeometry": True, "minInliers": 8, "minMatches": 10, "autoMinKeypoints": 60, "searchArea": "anywhere",
@@ -77,6 +78,10 @@ class Settings:
         self.data = deep_merge(DEFAULTS, saved)
         if existed and "onboarded" not in saved:
             self.data["onboarded"] = True  # installs from before the wizard existed
+        if "desktop-when-no-game" not in self.data["migrations"]:
+            # 0.5.1: recording the whole screen when no game is detected is now the default
+            self.data["recording"]["recordDesktopWhenNoGame"] = True
+            self.data["migrations"] = self.data["migrations"] + ["desktop-when-no-game"]
         if not self.data["general"]["clipFolder"]:
             self.data["general"]["clipFolder"] = os.path.join(paths.videos_dir(), "Mettaloid")
         os.makedirs(self.data["general"]["clipFolder"], exist_ok=True)

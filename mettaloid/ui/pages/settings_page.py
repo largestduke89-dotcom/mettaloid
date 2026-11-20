@@ -309,7 +309,7 @@ class SettingsPage(Page):
         self.monitor.setMinimumWidth(200)
         self.show_if(sec.row("Monitor", None, self.monitor), lambda s: s["recording"]["captureMode"] == "desktop" or s["recording"]["recordDesktopWhenNoGame"])
         self._sync.append(lambda s: self._fill_monitors())
-        self.toggle(sec, "Clip the desktop when no game is running", "Keeps the replay buffer on with display capture outside of games.", "recording", "recordDesktopWhenNoGame")
+        self.toggle(sec, "Record the whole screen when no game is detected", "So you can always clip, even in games Mettaloid doesn't recognise.", "recording", "recordDesktopWhenNoGame")
         self.toggle(sec, "Record full sessions automatically", "Start a full recording when a game launches and stop when it closes. Use the bookmark hotkey to mark moments.",
                     "recording", "autoRecordSessions")
         self.combo(sec, "File format", "MP4 is most compatible. MKV / Hybrid MP4 survive crashes during long recordings.", "recording", "fileFormat",

@@ -23,6 +23,8 @@ from .planner import plan_quality
 
 SCENE = "Mettaloid"
 IN_GAME, IN_DISPLAY = "MT Game Capture", "MT Display Capture"
+IN_WINDOW = "MT Window Capture"  # Windows Graphics Capture - works where game hooks are blocked (e.g. Roblox)
+SOURCES = {"game": IN_GAME, "window": IN_WINDOW, "display": IN_DISPLAY}
 IN_GAME_AUDIO, IN_DISCORD = "MT Game Audio", "MT Discord"
 IN_DESKTOP, IN_MIC = "MT Desktop Audio", "MT Microphone"
 NOISE = "MT Noise Suppression"
@@ -433,6 +435,7 @@ class ObsManager:
         ex = self.input_names()
         self.ensure_input(ex, IN_GAME, "game_capture", {"capture_mode": "any_fullscreen", "capture_cursor": False, "capture_overlays": False, "anti_cheat_hook": True, "limit_framerate": False})
         self.ensure_input(ex, IN_DISPLAY, "monitor_capture", {"capture_cursor": True}, False)
+        self.ensure_input(ex, IN_WINDOW, "window_capture", {"method": 2, "cursor": False, "client_area": True, "compatibility": False}, False)
         self.ensure_input(ex, IN_GAME_AUDIO, "wasapi_process_output_capture", {"priority": 2}, False)
         self.ensure_input(ex, IN_DISCORD, "wasapi_process_output_capture", {"priority": 2}, False)
         sp = self.call("GetSpecialInputs")
@@ -442,8 +445,8 @@ class ObsManager:
             self.ensure_input(ex, IN_DESKTOP, "wasapi_output_capture", {"device_id": "default"})
         if not sp.get("mic1"):
             self.ensure_input(ex, IN_MIC, "wasapi_input_capture", {"device_id": "default"})
-        self.fit(IN_GAME)
-        self.fit(IN_DISPLAY)
+        for src in SOURCES.values():
+            self.fit(src)
         self.apply_audio()
         self.apply_monitor()
 
@@ -460,12 +463,13 @@ class ObsManager:
         if self.status["obsState"] != "ready":
             return {"outputs": [], "inputs": [], "monitors": []}
         m = lambda arr: [{"id": i["itemValue"], "name": i["itemName"]} for i in arr]  # noqa: E731
+        mons = [i for i in self.list_items(IN_DISPLAY, "monitor_id") if i.get("itemValue") not in (None, "", "DUMMY")]
         return {"outputs": m(self.list_items(self.desktop_name, "device_id")), "inputs": m(self.list_items(self.mic_name, "device_id")),
-                "monitors": m(self.list_items(IN_DISPLAY, "monitor_id"))}
+                "monitors": m(mons)}
 
     def apply_monitor(self):
         s = self.settings.get()["recording"]
-        mons = self.list_items(IN_DISPLAY, "monitor_id")
+        mons = [m for m in self.list_items(IN_DISPLAY, "monitor_id") if m.get("itemValue") not in (None, "", "DUMMY") and m.get("itemEnabled", True)]
         if mons:
             m = mons[s["monitorIndex"]] if s["monitorIndex"] < len(mons) else mons[0]
             self.safe("SetInputSettings", {"inputName": IN_DISPLAY, "inputSettings": {"monitor_id": m["itemValue"], "monitor": s["monitorIndex"]}})
@@ -504,33 +508,98 @@ class ObsManager:
         e = ":" + exe.lower()
         return next((i for i in self.list_items(inp, "window") if (i.get("itemValue") or "").lower().endswith(e)), None)
 
-    def capture_game_window(self, game):
+    # ---------------------------------------------------------------- capture method + fallback
+    def capture_method(self, game):
+        """game hook → window capture (WGC) → whole display. Remembers what worked per game."""
+        over = self.settings.get()["games"].get("captureMethod", {}).get(game["id"])
+        return over or game.get("capture") or "game"
+
+    def select_source(self, method):
+        for m, src in SOURCES.items():
+            self.set_item_enabled(src, m == method)
+
+    def remember_method(self, game, method):
+        cur = dict(self.settings.get()["games"].get("captureMethod") or {})
+        cur[game["id"]] = method
+        self.settings.update({"games": {"captureMethod": cur}})
+
+    def source_is_black(self, src):
+        """Grab a tiny screenshot of a source and check whether it's (nearly) all black."""
+        try:
+            import base64
+
+            import cv2
+            import numpy as np
+            data = self.call("GetSourceScreenshot", {"sourceName": src, "imageFormat": "png", "imageWidth": 96, "imageHeight": 54}, timeout=5)["imageData"]
+            img = cv2.imdecode(np.frombuffer(base64.b64decode(data.split(",", 1)[1]), np.uint8), cv2.IMREAD_GRAYSCALE)
+            return img is None or (img.mean() < 4 and img.max() < 24)
+        except Exception:  # noqa: BLE001
+            return False  # can't tell - don't switch
+
+    def capture_game_window(self, game, method="game"):
         if self.window_retry:
             self.window_retry.set()
-        self.safe("SetInputSettings", {"inputName": IN_GAME, "inputSettings": {"capture_mode": "any_fullscreen"}})
+        src = SOURCES[method]
+        if method == "game":
+            self.safe("SetInputSettings", {"inputName": IN_GAME, "inputSettings": {"capture_mode": "any_fullscreen"}})
 
         def apply():
-            w = self.find_window(game["exe"])
+            w = self.find_window(game["exe"], src)
             if not w:
                 return False
-            self.safe("SetInputSettings", {"inputName": IN_GAME, "inputSettings": {"capture_mode": "window", "window": w["itemValue"], "priority": 2}})
+            if method == "game":
+                self.safe("SetInputSettings", {"inputName": IN_GAME, "inputSettings": {"capture_mode": "window", "window": w["itemValue"], "priority": 2}})
+            else:
+                self.safe("SetInputSettings", {"inputName": IN_WINDOW, "inputSettings": {"window": w["itemValue"], "priority": 2, "method": 2}})
             aw = self.find_window(game["exe"], IN_GAME_AUDIO)
             if aw:
                 self.safe("SetInputSettings", {"inputName": IN_GAME_AUDIO, "inputSettings": {"window": aw["itemValue"], "priority": 2}})
-            self.set_status(capturingWindow=w["itemName"])
+            label = {"game": "Game capture", "window": "Window capture"}[method]
+            self.set_status(capturingWindow=f"{label}: {w['itemName']}")
             return True
-        if apply():
-            return
         stop = threading.Event()
         self.window_retry = stop
 
+        def same_game():
+            g = self.status["game"]
+            return g and g["exe"] == game["exe"] and not stop.is_set()
+
+        def verify():
+            """If the picture stays black, step down to the next capture method."""
+            black = 0
+            for _ in range(8):
+                if stop.wait(3) or not same_game():
+                    return
+                if not self.submit(self.source_is_black, src).result():
+                    return  # we have a picture
+                black += 1
+                if black >= 4:  # ~12 s of pure black after the window was found
+                    nxt = "window" if method == "game" else "display"
+                    print(f"capture: {method} capture of {game['name']} is black - switching to {nxt}")
+                    self.remember_method(game, nxt)
+                    self.submit(self._switch_method, game, nxt)
+                    return
+
         def retry():
-            for _ in range(40):
-                if stop.wait(3) or not self.status["game"] or self.status["game"]["exe"] != game["exe"]:
-                    return
+            for _ in range(7):
                 if self.submit(apply).result():
+                    return verify()
+                if stop.wait(3) or not same_game():
                     return
+            # no capturable window after ~20 s: record the whole screen rather than nothing
+            print(f"capture: no window found for {game['name']} - recording the whole screen")
+            self.submit(self._switch_method, game, "display")
         threading.Thread(target=retry, daemon=True).start()
+
+    def _switch_method(self, game, method):
+        if not self.status["game"] or self.status["game"]["exe"] != game["exe"]:
+            return
+        self.select_source(method)
+        self.set_status(captureMethod=method, captureMode="desktop" if method == "display" else "game")
+        if method == "display":
+            self.set_status(capturingWindow="Whole screen (the game window couldn't be captured)")
+        else:
+            self.capture_game_window(game, method)
 
     def reconfigure(self, profile):
         plan = self.compute_plan(profile)
@@ -551,8 +620,8 @@ class ObsManager:
                     raise RuntimeError("profile did not switch")
             self.active_profile = nxt
             self.applied_sig = sig
-            self.fit(IN_GAME)
-            self.fit(IN_DISPLAY)
+            for src in SOURCES.values():
+                self.fit(src)
             return True
         except Exception as e:  # noqa: BLE001
             print("hot reconfigure failed, restarting OBS:", e)
@@ -582,11 +651,11 @@ class ObsManager:
             self.reconfigure(profile)
         except Exception as e:  # noqa: BLE001
             print("reconfigure failed:", e)
-        self.set_item_enabled(IN_GAME, not use_display)
-        self.set_item_enabled(IN_DISPLAY, use_display)
-        self.set_status(captureMode="desktop" if use_display else "game")
-        if game and not desktop:
-            self.capture_game_window(game)
+        method = "display" if use_display else self.capture_method(game)
+        self.select_source(method)
+        self.set_status(captureMode="desktop" if method == "display" else "game", captureMethod=method)
+        if game and method != "display":
+            self.capture_game_window(game, method)
         self.apply_audio(profile)
         if want and not self.status["replayActive"]:
             self.start_replay()

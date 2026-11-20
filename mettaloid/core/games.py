@@ -69,22 +69,53 @@ class GameDetector:
         user32.EnumWindows(cb, 0)
         return bool(found)
 
+    @staticmethod
+    def window_pids():
+        """PIDs that own a visible, non-cloaked, non-tiny top-level window."""
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        dwm = ctypes.windll.dwmapi
+        pids = set()
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def cb(hwnd, _):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            cloaked = ctypes.c_int(0)
+            dwm.DwmGetWindowAttribute(hwnd, 14, ctypes.byref(cloaked), 4)  # DWMWA_CLOAKED
+            if cloaked.value:
+                return True
+            r = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(r))
+            if (r.right - r.left) < 160 or (r.bottom - r.top) < 120:
+                if not user32.IsIconic(hwnd):  # minimized games still count
+                    return True
+            p = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+            pids.add(p.value)
+            return True
+        user32.EnumWindows(cb, 0)
+        return pids
+
     def poll(self):
         self.last_full = time.time()
         running = {}
         for p in psutil.process_iter(["name", "pid"]):
             n = (p.info.get("name") or "").lower()
             if n:
-                running.setdefault(n, p.info["pid"])
+                running.setdefault(n, []).append(p.info["pid"])
+        with_window = self.window_pids()
         found = None
         for g in self.games():
-            exe = next((e for e in g["exe"] if e.lower() in running), None)
-            if not exe:
+            # background processes without a window (e.g. Roblox after you close it) don't count
+            hit = next(((e, pid) for e in g["exe"] for pid in running.get(e.lower(), []) if pid in with_window), None)
+            if not hit:
                 continue
-            pid = running[exe.lower()]
+            exe, pid = hit
             if g.get("requireWindowTitle") and not self._window_title_has(pid, g["requireWindowTitle"]):
                 continue
-            found = {"id": g["id"], "name": g["name"], "exe": exe, "pid": pid, "category": g.get("category")}
+            found = {"id": g["id"], "name": g["name"], "exe": exe, "pid": pid, "category": g.get("category"), "capture": g.get("capture")}
             break
         if found:
             self.miss = 0

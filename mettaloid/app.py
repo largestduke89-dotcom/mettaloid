@@ -1,5 +1,6 @@
 """Application: Qt app, backend, tray, overlay, window lifecycle (UI freed when hidden)."""
 import gc
+import warnings
 import os
 import sys
 
@@ -87,10 +88,12 @@ class App:
         for sig in (self.backend.toast, self.backend.status, self.backend.job, self.backend.hotkeys_failed, self.backend.navigate,
                     self.backend.library_changed, self.backend.clip_new, self.backend.ff_job, self.backend.ff_match, self.backend.ff_thumb,
                     self.backend.ff_changed, self.backend.updater, self.backend.settings_changed):
-            try:
-                sig.disconnect()
-            except (RuntimeError, TypeError):
-                pass
+            with warnings.catch_warnings():  # disconnecting a signal with no slots only warns
+                warnings.simplefilter("ignore", RuntimeWarning)
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
         self.backend.toast.connect(self.on_toast)
         self.backend.status.connect(lambda s: self.update_tray())
         w.deleteLater()

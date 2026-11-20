@@ -846,6 +846,8 @@ class SettingsPage(Page):
         self.hw_btn = btn("Detect", None, self._detect_hw, sm=True)
         self.hw_row = sec.row("Hardware", "Detect GPUs and hardware encoders", self.hw_btn)
         sec.row("App data", wrap_path(paths.USER_DATA), btn(" Open", "folder", lambda: self._open(paths.USER_DATA), sm=True, icon_size=14))
+        sec.row("Setup wizard", "Go through the first-run questions again (presets: Minimal / Everything on / Custom).",
+                btn(" Run setup again", "refresh", lambda: self.win.app.run_onboarding(self.win), sm=True, icon_size=14))
         logs_dir = os.path.join(paths.USER_DATA, "logs")
         sec.row("Logs", "Send these when reporting a problem.",
                 btn(" Open", "folder", lambda: self._open(logs_dir), sm=True, icon_size=14),

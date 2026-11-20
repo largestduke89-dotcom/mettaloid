@@ -7,6 +7,7 @@ import threading
 from . import paths
 
 DEFAULTS = {
+    "onboarded": False,  # first-run setup wizard completed
     "general": {"launchOnStartup": False, "startMinimized": False, "closeToTray": True, "clipFolder": ""},
     "recording": {
         "replayEnabled": True, "replaySeconds": 60, "recordDesktopWhenNoGame": False, "autoRecordSessions": False,
@@ -66,12 +67,15 @@ class Settings:
         self.lock = threading.RLock()
         self.listeners = []
         saved = {}
+        existed = os.path.exists(self.file)
         try:
             with open(self.file, "r", encoding="utf-8") as f:
                 saved = json.load(f)
         except Exception:  # noqa: BLE001
             pass
         self.data = deep_merge(DEFAULTS, saved)
+        if existed and "onboarded" not in saved:
+            self.data["onboarded"] = True  # installs from before the wizard existed
         if not self.data["general"]["clipFolder"]:
             self.data["general"]["clipFolder"] = os.path.join(paths.videos_dir(), "Mettaloid")
         os.makedirs(self.data["general"]["clipFolder"], exist_ok=True)

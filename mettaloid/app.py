@@ -157,9 +157,27 @@ class App:
         self.backend.updater_svc.install_on_quit()
         self.qt.quit()
 
+    def run_onboarding(self, parent=None):
+        from .ui.onboarding import OnboardingDialog
+        dlg = OnboardingDialog(self.backend.settings, parent)
+        from .ui.mainwindow import dark_titlebar
+        dark_titlebar(dlg)
+        dlg.exec()
+        res = getattr(dlg, "result_settings", None)
+        if res:
+            self.backend.update_settings(res)
+            if parent is not None and self.window:
+                self.window.toaster.show_toast({"title": "Setup applied", "subtitle": "Your choices are saved."})
+        return True
+
     def run(self, hidden=False):
         if not self.claim_instance():
             return 0
+        # First run: ask about everything before anything starts recording.
+        if not self.backend.settings.get().get("onboarded") and not os.environ.get("MT_SKIP_ONBOARDING"):
+            if not self.run_onboarding():
+                return 0
+            hidden = False
         # MT_NO_RECORDER=1: UI-only mode for development/tests (no OBS, hotkeys, detection)
         if not os.environ.get("MT_NO_RECORDER"):
             self.backend.start()

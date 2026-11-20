@@ -1,6 +1,6 @@
 """Editor timeline (custom painted): ruler, segments with filmstrips, trim handles, text track, bookmarks, playhead."""
-from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from ..clipgrid import THUMBS
@@ -22,6 +22,8 @@ class Timeline(QWidget):
     segment_trim = Signal(int, float, float)  # index, start, end (live)
     zoom_wheel = Signal(float, float)  # zoom factor, anchor x (widget coords)
     scroll_wheel = Signal(int)         # wheel delta to scroll horizontally
+    scrub = Signal(float)              # output seconds, while the playhead is dragged (cheap preview)
+    drag_end = Signal(str)             # "seek" / "l" / "r" when the mouse button is released
 
     def __init__(self):
         super().__init__()
@@ -35,13 +37,20 @@ class Timeline(QWidget):
         self.marks = []               # [(output_t, label)]
         self.drag = None
         self.frozen = None            # (pps, x0) locked while a trim handle is dragged
+        self._tiles = {}              # (thumb path, dpr) -> pixmap scaled to track height
+        self._cache = self._cache_key = None   # everything except the playhead, re-rendered only when it changes
+        self._thumb_gen = 0
         self.setMinimumHeight(TEXT_Y + TEXT_H + 8)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMouseTracking(True)
         self.font_s = QFont("Segoe UI", 8)
         self.font_b = QFont("Segoe UI", 8)
         self.font_b.setBold(True)
-        THUMBS.updated.connect(lambda p: self.update())
+        THUMBS.updated.connect(self._thumb_loaded)
+
+    def _thumb_loaded(self, _path):
+        self._thumb_gen += 1
+        self.update()
 
     # ---- geometry
     def offsets(self):
@@ -118,27 +127,80 @@ class Timeline(QWidget):
         self.update()
 
     # ---- painting
-    def _strip(self, p, r, src_i, t0, t1, opacity):
+    def _tile(self, path):
+        """Thumbnail pre-scaled to the track height (cached), so tiles are drawn 1:1 and never stretched."""
+        dpr = self.devicePixelRatioF()
+        key = (path, dpr)
+        pm = self._tiles.get(key)
+        if pm is None:
+            src = THUMBS.get(path, 240)
+            if not src:
+                return None
+            pm = src.scaledToHeight(int(TRACK_H * dpr), Qt.SmoothTransformation)
+            pm.setDevicePixelRatio(dpr)
+            if len(self._tiles) > 600:
+                self._tiles.clear()
+            self._tiles[key] = pm
+        return pm
+
+    def _strip(self, p, r, src_i, origin, speed, opacity):
+        """Fixed-size thumbnails laid out along the source's own time axis (origin = x of source t=0), clipped
+        to r. Trimming just reveals/hides tiles; nothing moves or stretches while a handle is dragged."""
         thumbs = self.film.get(self.project["sources"][src_i]) or []
         dur = self.durations[src_i] or 1
         if not thumbs or r.width() <= 0:
             return
-        n = max(1, int(r.width() // 60) + 1)
-        for k in range(n):
-            st = t0 + (t1 - t0) * (k + 0.5) / n
-            pm = THUMBS.get(thumbs[max(0, min(len(thumbs) - 1, int(st / dur * len(thumbs))))], 160)
+        first = self._tile(thumbs[0])
+        tw = first.width() / first.devicePixelRatio() if first else TRACK_H * 16 / 9
+        pps = self.pps()
+        dt = tw / pps * speed               # source seconds per tile
+        if dt <= 0:
+            return
+        k0, k1 = int((r.left() - origin) // tw), int((r.right() - origin) // tw) + 1
+        p.setOpacity(opacity)
+        for k in range(max(0, k0), k1):
+            t = (k + 0.5) * dt
+            if t > dur + dt:
+                break
+            pm = self._tile(thumbs[max(0, min(len(thumbs) - 1, int(t / dur * len(thumbs))))])
             if pm:
-                cell = QRectF(r.x() + k * r.width() / n, r.y(), r.width() / n, r.height())
-                sc = max(cell.width() / pm.width(), cell.height() / pm.height())
-                w, h = pm.width() * sc, pm.height() * sc
-                p.setOpacity(opacity)
-                p.drawPixmap(QRectF(cell.center().x() - w / 2, cell.center().y() - h / 2, w, h), pm, QRectF(pm.rect()))
-                p.setOpacity(1)
+                p.drawPixmap(QPointF(origin + k * tw, r.top()), pm)
+        p.setOpacity(1)
+
+    def _static_key(self):
+        return (self.width(), self.height(), self.devicePixelRatioF(), repr(self.project["segments"]), repr(self.project.get("texts")),
+                self.sel_seg, self.sel_text, tuple(self.marks), self.frozen, self.shift(), self._thumb_gen, len(self.film))
 
     def paintEvent(self, _):
         if not self.project:
             return
+        key = self._static_key()
+        if self._cache is None or self._cache_key != key:
+            dpr = self.devicePixelRatioF()
+            pm = QPixmap(int(self.width() * dpr), int(self.height() * dpr))
+            pm.setDevicePixelRatio(dpr)
+            pm.fill(Qt.transparent)
+            sp = QPainter(pm)
+            self._paint_static(sp)
+            sp.end()
+            self._cache, self._cache_key = pm, key
         p = QPainter(self)
+        p.drawPixmap(0, 0, self._cache)
+        p.setRenderHint(QPainter.Antialiasing)
+        # playhead
+        x = self.x_of(self.time)
+        p.setPen(QPen(QColor("white"), 2))
+        p.drawLine(int(x), 0, int(x), self.height())
+        p.setBrush(QColor("white"))
+        p.setPen(Qt.NoPen)
+        tri = QPainterPath()
+        tri.moveTo(x - 6, 0)
+        tri.lineTo(x + 6, 0)
+        tri.lineTo(x, 8)
+        tri.closeSubpath()
+        p.drawPath(tri)
+
+    def _paint_static(self, p):
         p.setRenderHint(QPainter.Antialiasing)
         pps = self.pps()
         tot = self.total()
@@ -163,16 +225,17 @@ class Timeline(QWidget):
         if segs:
             lead, tail = self._ghosts()
             f, l = segs[0], segs[-1]
-            ghosts = ((QRectF(rects[0][0] - lead * pps, TRACK_Y, lead * pps, TRACK_H), f["src"], 0.0, f["start"]),
-                      (QRectF(rects[-1][1], TRACK_Y, tail * pps, TRACK_H), l["src"], l["end"], self.durations[l["src"]] or l["end"]))
-            for gr, si, t0, t1 in ghosts:
+            fsp, lsp = f.get("speed") or 1, l.get("speed") or 1
+            ghosts = ((QRectF(rects[0][0] - lead * pps, TRACK_Y, lead * pps, TRACK_H), f["src"], rects[0][0] - f["start"] / fsp * pps, fsp),
+                      (QRectF(rects[-1][1], TRACK_Y, tail * pps, TRACK_H), l["src"], rects[-1][0] - l["start"] / lsp * pps, lsp))
+            for gr, si, origin, sp in ghosts:
                 if gr.width() < 1:
                     continue
                 path = QPainterPath()
                 path.addRoundedRect(gr, 7, 7)
                 p.save()
                 p.setClipPath(path)
-                self._strip(p, gr, si, t0, t1, 0.14)
+                self._strip(p, gr, si, origin, sp, 0.14)
                 p.fillRect(gr, QColor(0, 0, 0, 90))
                 p.restore()
         # segments
@@ -183,7 +246,8 @@ class Timeline(QWidget):
             path.addRoundedRect(r, 7, 7)
             p.save()
             p.setClipPath(path)
-            self._strip(p, r, s["src"], s["start"], s["end"], 0.38)
+            sp = s.get("speed") or 1
+            self._strip(p, r, s["src"], xa - s["start"] / sp * pps, sp, 0.38)
             sel = i == self.sel_seg
             p.fillRect(r, QColor(245, 183, 10, 85 if sel else 50))
             p.restore()
@@ -215,18 +279,6 @@ class Timeline(QWidget):
             x = self.x_of(t)
             p.setPen(QPen(QColor(C["purple"]), 2))
             p.drawLine(int(x), RULER, int(x), TRACK_Y + TRACK_H)
-        # playhead
-        x = self.x_of(self.time)
-        p.setPen(QPen(QColor("white"), 2))
-        p.drawLine(int(x), 0, int(x), self.height())
-        p.setBrush(QColor("white"))
-        p.setPen(Qt.NoPen)
-        tri = QPainterPath()
-        tri.moveTo(x - 6, 0)
-        tri.lineTo(x + 6, 0)
-        tri.lineTo(x, 8)
-        tri.closeSubpath()
-        p.drawPath(tri)
 
     # ---- interaction
     def _hit(self, pos):
@@ -263,7 +315,7 @@ class Timeline(QWidget):
                     self.segment_trim.emit(i, seg["start"], en)
                 self.update()
             else:
-                self.seek.emit(self.t_of(e.position().x()))
+                self.scrub.emit(self.t_of(e.position().x()))
             return
         h = self._hit(e.position())
         self.setCursor(Qt.SizeHorCursor if h and h[0] in ("l", "r") else Qt.ArrowCursor)
@@ -288,13 +340,16 @@ class Timeline(QWidget):
             self.select_text.emit(i)
             return
         self.drag = ("seek", None, 0, None)
-        self.seek.emit(self.t_of(e.position().x()))
+        self.scrub.emit(self.t_of(e.position().x()))
         self.update()
 
     def mouseReleaseEvent(self, e):
+        kind = self.drag[0] if self.drag else None
         self.drag = None
         self.frozen = None
         self.update()
+        if kind:
+            self.drag_end.emit(kind)
 
     def wheelEvent(self, e):
         d = e.angleDelta().y() or e.angleDelta().x()

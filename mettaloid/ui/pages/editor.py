@@ -411,6 +411,9 @@ class EditorPage(Page):
         self.tick_timer = QTimer(self, interval=16, timeout=self.tick)
         self.save_timer = QTimer(self, singleShot=True, interval=800, timeout=self.save_draft)
         self.est_timer = QTimer(self, singleShot=True, interval=400, timeout=self.update_estimate)
+        # scrubbing: seek the decoder at most every 45 ms (latest position wins); the playhead moves instantly
+        self.scrub_timer = QTimer(self, singleShot=True, interval=45, timeout=self._scrub_flush)
+        self.scrub_pending = None
 
         tl = self.timeline
         tl.seek.connect(self.seek)
@@ -419,7 +422,9 @@ class EditorPage(Page):
         tl.edit_begin.connect(self.snapshot)
         tl.zoom_wheel.connect(self.wheel_zoom)
         tl.scroll_wheel.connect(lambda d: self.tl_scroll.horizontalScrollBar().setValue(self.tl_scroll.horizontalScrollBar().value() - d))
-        tl.segment_trim.connect(lambda i, a, b_: self.live(lambda p: p["segments"][i].update(start=a, end=b_)))
+        tl.segment_trim.connect(self.trim_live)
+        tl.scrub.connect(self.scrub)
+        tl.drag_end.connect(self.drag_end)
         pv = self.preview
         pv.edit_begin.connect(self.snapshot)
         pv.text_selected.connect(lambda i: self.select_text(i if i >= 0 else None))
@@ -575,6 +580,38 @@ class EditorPage(Page):
         self.load_segment(i, st, play=self.playing)
         self.sync_aux(force=True)
         self.refresh()
+
+    def scrub(self, t):
+        """Playhead drag: move the playhead now, seek the video throttled, sync extra audio tracks on release."""
+        if not self.project:
+            return
+        self.time = clamp(t, 0, self.total())
+        self.scrub_pending = self.time
+        if not self.scrub_timer.isActive():
+            self._scrub_flush()
+        self.refresh(light=True)
+
+    def _scrub_flush(self):
+        t, self.scrub_pending = self.scrub_pending, None
+        if t is None or not self.project:
+            return
+        segs = self.project["segments"]
+        i, st = locate(segs, offsets(segs), t)
+        self.load_segment(i, st, play=self.playing)
+        self.scrub_timer.start()
+
+    def trim_live(self, i, a, b):
+        """Handle drag: update the segment and repaint the timeline only; the full refresh runs on release."""
+        self.project["segments"][i].update(start=a, end=b)
+        self.refresh(light=True)
+
+    def drag_end(self, kind):
+        self.scrub_timer.stop()
+        self.scrub_pending = None
+        if kind == "seek":
+            self.seek(self.time)
+        else:
+            self.changed(rebuild=True)
 
     def step_frames(self, n):
         fps = self.clips[0].get("fps") or 60

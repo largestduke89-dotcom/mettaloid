@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QMainWi
 from ..core import paths
 from . import icons
 from .theme import C
+from .dragcard import DragCard
 from .widgets import Badge, Toaster, bar, label
 
 NAV = [("home", "Home", "home"), ("library", "Library", "library"), ("compressor", "Compressor", "compress"),
@@ -60,6 +61,8 @@ class MainWindow(QMainWindow):
         self.pages = {}
         self.current = None
         self.toaster = Toaster(root)
+        self.drag_card = DragCard(root, self.backend)
+        self.cards_shown = set()
         b = self.backend
         b.toast.connect(self.toaster.show_toast)
         b.status.connect(self._status)
@@ -150,6 +153,10 @@ class MainWindow(QMainWindow):
         self.st_game.setText(s["game"]["name"] if s.get("game") else "Waiting for game")
 
     def _job(self, j):
+        if j and j.get("status") == "done" and j.get("id") not in self.cards_shown and j.get("output"):
+            self.cards_shown.add(j["id"])
+            clip = self.backend.library.get(j["clipId"]) if j.get("clipId") else None
+            self.drag_card.show_file(j["output"], j.get("title"), j.get("size"), (clip or {}).get("thumb"))
         running = [x for x in self.backend.list_jobs() if x["status"] == "running"]
         if running:
             self.jobs_card.show()
@@ -199,6 +206,7 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self.toaster.reposition()
+        self.drag_card.reposition()
 
     def closeEvent(self, e):
         if self.backend.settings.get()["general"]["closeToTray"] and not self.app.quitting:

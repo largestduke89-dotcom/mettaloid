@@ -655,11 +655,12 @@ class Toaster(QWidget):
         self.lay.setContentsMargins(0, 0, 0, 0)
         self.lay.setSpacing(8)
         self.lay.addStretch(1)
+        self.bottom_gap = 0  # room kept free below the toasts (e.g. the export drag card)
         self.raise_()
 
     def reposition(self):
         p = self.parentWidget()
-        self.setGeometry(p.width() - 340, p.height() - 400, 320, 380)
+        self.setGeometry(p.width() - 340, p.height() - 400 - self.bottom_gap, 320, 380)
         self.raise_()
 
     def show_toast(self, t):

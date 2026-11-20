@@ -16,6 +16,32 @@ with open(os.path.join(paths.DATA, "games.json"), encoding="utf-8") as _f:
     BUILTIN = json.load(_f)
 
 
+# windows that aren't really "an app you're recording" (shell, lock screen, ourselves, OBS)
+_NOT_APPS = {"explorer.exe", "shellexperiencehost.exe", "startmenuexperiencehost.exe", "searchhost.exe", "searchapp.exe",
+             "lockapp.exe", "applicationframehost.exe", "textinputhost.exe", "obs64.exe", "mettaloid.exe"}
+
+
+def foreground_app():
+    """Exe name (without .exe) of the app in the foreground, or None if it's the desktop/shell/us."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value or pid.value == os.getpid():
+            return None
+        name = psutil.Process(pid.value).name()
+    except Exception:  # noqa: BLE001
+        return None
+    if not name or name.lower() in _NOT_APPS:
+        return None
+    return os.path.splitext(name)[0]
+
+
 class GameDetector:
     def __init__(self, settings):
         self.settings = settings

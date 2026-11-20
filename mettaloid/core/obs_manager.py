@@ -17,6 +17,7 @@ from queue import Queue
 import psutil
 
 from . import paths, proc
+from .games import foreground_app
 from .obs_config import PROFILE, PROFILE_B, track_mask, write_obs_config
 from .obs_ws import ObsError, ObsWs
 from .planner import plan_quality
@@ -376,13 +377,13 @@ class ObsManager:
             st = d.get("outputState")
             if st == "OBS_WEBSOCKET_OUTPUT_STARTED":
                 self.bookmarks = []
-                self.session_meta = {"game": self.status["game"], "startedAt": time.time() * 1000}
+                self.session_meta = {"game": self.status["game"], "app": None if self.status["game"] else foreground_app(), "startedAt": time.time() * 1000}
                 self.set_status(recording=True, recordStartedAt=time.time() * 1000)
             elif st == "OBS_WEBSOCKET_OUTPUT_STOPPED":
                 meta = self.session_meta or {}
                 self.set_status(recording=False, recordStartedAt=None)
                 if d.get("outputPath"):
-                    info = {"path": d["outputPath"], "bookmarks": list(self.bookmarks), "game": meta.get("game"), "startedAt": meta.get("startedAt") or time.time() * 1000}
+                    info = {"path": d["outputPath"], "bookmarks": list(self.bookmarks), "game": meta.get("game"), "app": meta.get("app"), "startedAt": meta.get("startedAt") or time.time() * 1000}
                     for fn in self.on_recording_finished:
                         threading.Thread(target=fn, args=(info,), daemon=True).start()
                 self.bookmarks, self.session_meta = [], None
@@ -392,7 +393,8 @@ class ObsManager:
 
     def _replay_saved(self, path):
         pend = self.pending_saves.pop(0) if self.pending_saves else None
-        info = {"path": path, "game": self.status["game"], "bufferSeconds": self.status["bufferSeconds"]}
+        game = self.status["game"]
+        info = {"path": path, "game": game, "app": None if game else foreground_app(), "bufferSeconds": self.status["bufferSeconds"]}
         if pend:
             info.update(pend["opts"])
             pend["fut"].set_result(path)
@@ -645,7 +647,7 @@ class ObsManager:
         if prev and (not game or prev["exe"] != game["exe"]) and getattr(self, "auto_recording", False) and self.status["recording"]:
             self.safe("StopRecord")
             self.auto_recording = False
-        want = s["recording"]["replayEnabled"] and (bool(game) or desktop or s["recording"]["recordDesktopWhenNoGame"])
+        want = s["recording"]["replayEnabled"]  # no game detected → the whole screen is recorded
         use_display = desktop or not game
         try:
             self.reconfigure(profile)

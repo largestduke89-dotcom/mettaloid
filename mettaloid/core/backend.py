@@ -137,14 +137,14 @@ class Backend(QObject):
     # ---------------------------------------------------------------- recorder events
     def _replay_saved(self, info):
         try:
-            clip = self.library.ingest_replay(info["path"], info.get("seconds"), info.get("bufferSeconds"), info.get("game"), info.get("source"), info.get("event"), info.get("label"))
+            clip = self.library.ingest_replay(info["path"], info.get("seconds"), info.get("bufferSeconds"), info.get("game"), info.get("source"), info.get("event"), info.get("label"), info.get("app"))
             self.post("clip_new", clip)
         except Exception as e:  # noqa: BLE001
             self.notify("Clip processing failed", str(e), "err", "error")
 
     def _recording_finished(self, info):
         try:
-            clip = self.library.ingest_recording(info["path"], info["bookmarks"], info["game"], info["startedAt"])
+            clip = self.library.ingest_recording(info["path"], info["bookmarks"], info["game"], info["startedAt"], info.get("app"))
             self.post("clip_new", clip)
             self.notify("Session saved", f"{clip['title']} · {len(info['bookmarks'])} bookmark(s)", "rec", None)
         except Exception as e:  # noqa: BLE001

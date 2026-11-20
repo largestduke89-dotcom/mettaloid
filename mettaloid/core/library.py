@@ -180,11 +180,25 @@ class Library:
         os.makedirs(d, exist_ok=True)
         return d
 
-    def ingest_replay(self, raw, seconds=None, buffer_seconds=None, game=None, source=None, event=None, label=None):
+    def _source_name(self, game, app, counter, word):
+        """What a new clip is named after: the game, else the app's exe, else "<word> #N"."""
+        if game:
+            return game["name"], game, game["name"]
+        if app:
+            return app, {"id": "app:" + app.lower(), "name": app}, app
+        with self.lock:
+            n = int(self.db.get(counter, 0)) + 1
+            self.db[counter] = n
+        return f"{word} #{n}", None, "Desktop"
+
+    def ingest_replay(self, raw, seconds=None, buffer_seconds=None, game=None, source=None, event=None, label=None, app=None):
         wait_unlocked(raw)
         ext = os.path.splitext(raw)[1]
-        gname = game["name"] if game else "Desktop"
-        final = unique_path(os.path.join(self.game_dir(game), f"{sanitize(gname)} {stamp()}{ext}"))
+        name, tag, folder = self._source_name(game, app, "clipCounter", "Clip")
+        numbered = not game and not app
+        d = os.path.join(self.clip_folder, sanitize(folder))
+        os.makedirs(d, exist_ok=True)
+        final = unique_path(os.path.join(d, f"{sanitize(name)}{'' if numbered else ' ' + stamp()}{ext}"))
         if seconds and buffer_seconds and seconds < buffer_seconds - 0.5:
             try:
                 ffmpeg.trim_tail(raw, final, seconds)
@@ -193,19 +207,22 @@ class Library:
                 move(raw, final)
         else:
             move(raw, final)
-        title = f"{label} – {gname}" if label and label not in ("Save clip", None) else f"{gname} clip"
-        return self.add(final, type="clip", game={"id": game["id"], "name": gname} if game else None, source=source or "hotkey", event=event, title=title)
+        base = name if numbered else f"{name} clip"
+        title = f"{label} – {name}" if label and label not in ("Save clip", None) else base
+        return self.add(final, type="clip", game={"id": tag["id"], "name": tag["name"]} if tag else None, source=source or "hotkey", event=event, title=title)
 
-    def ingest_recording(self, raw, bookmarks, game, started_at):
+    def ingest_recording(self, raw, bookmarks, game, started_at, app=None):
         wait_unlocked(raw, 20)
         ext = os.path.splitext(raw)[1]
-        gname = game["name"] if game else "Desktop"
-        d = os.path.join(self.game_dir(game), "Sessions")
+        name, tag, folder = self._source_name(game, app, "sessionCounter", "Session")
+        numbered = not game and not app
+        d = os.path.join(self.clip_folder, sanitize(folder), "Sessions")
         os.makedirs(d, exist_ok=True)
-        final = unique_path(os.path.join(d, f"{sanitize(gname)} session {stamp(started_at / 1000)}{ext}"))
+        fname = sanitize(name) if numbered else f"{sanitize(name)} session {stamp(started_at / 1000)}"
+        final = unique_path(os.path.join(d, fname + ext))
         move(raw, final)
-        return self.add(final, type="session", game={"id": game["id"], "name": gname} if game else None, bookmarks=bookmarks or [],
-                        createdAt=started_at, title=f"{gname} session")
+        return self.add(final, type="session", game={"id": tag["id"], "name": tag["name"]} if tag else None, bookmarks=bookmarks or [],
+                        createdAt=started_at, title=name if numbered else f"{name} session")
 
     # ---------------------------------------------------------------- edit
     def update(self, cid, patch):

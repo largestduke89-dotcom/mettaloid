@@ -209,8 +209,6 @@ class OnboardingDialog(QDialog):
         sec.row("Replay length", "How far back a clip goes. Longer uses more RAM; quality is adjusted automatically to fit.", sl, wide=True)
         sec.row("What to capture", "Game capture hooks the game directly (fastest). Display records a whole monitor.",
                 Seg([("game", "Game"), ("desktop", "Display")], self.get("recording.captureMode"), on_change=lambda x: self.set("recording.captureMode", x)))
-        sec.row("Record the whole screen when no game is detected", "So you can always clip, even in games Mettaloid doesn't recognise.",
-                self.toggle("recording.recordDesktopWhenNoGame"))
         sec.row("Record whole sessions automatically", "Records every game from start to finish. Uses a lot of disk space.",
                 self.toggle("recording.autoRecordSessions"))
         v.addWidget(sec)

@@ -1,0 +1,50 @@
+# Builds the Windows installer and publishes it as a GitHub Release.
+# Installed copies of Mettaloid check this repo's releases and update themselves.
+#
+# To release: bump VERSION in mettaloid/__init__.py, commit, then
+#   git tag v0.3.0 && git push origin v0.3.0
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache OBS / FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: vendor-${{ hashFiles('scripts/fetch_deps.py') }}
+
+      - name: Download OBS Studio + FFmpeg
+        run: python scripts/fetch_deps.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build app + installer
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          python scripts/build.py
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/Mettaloid-Setup-*.exe
+          generate_release_notes: true

@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  .toast {
+    position: absolute; top: 12px; right: 12px; left: 12px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px; border-radius: 14px;
+    background: rgba(16, 17, 22, 0.92); color: #f4f5f8;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    transform: translateY(-20px); opacity: 0; transition: all .22s cubic-bezier(.2,.8,.2,1);
+  }
+  .toast.show { transform: none; opacity: 1; }
+  .icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: #f5b70a; color: #111; font-weight: 800; font-size: 18px; flex: none; }
+  .icon.err { background: #ef4444; color: #fff; }
+  .icon.rec { background: #ef4444; color: #fff; }
+  .title { font-weight: 700; font-size: 15px; }
+  .sub { font-size: 12.5px; color: #a7abb8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 270px; }
+</style>
+</head>
+<body>
+<div class="toast" id="t"><div class="icon" id="i">✓</div><div><div class="title" id="ti"></div><div class="sub" id="s"></div></div></div>
+<script>
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  function tone(freqs, vol) {
+    const now = ctx.currentTime;
+    freqs.forEach((f, idx) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = f;
+      const t0 = now + idx * 0.09;
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(vol * 0.35, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+      o.connect(g).connect(ctx.destination);
+      o.start(t0);
+      o.stop(t0 + 0.25);
+    });
+  }
+  const sounds = { clip: [880, 1320], error: [300, 200], rec: [660, 990, 660], mark: [1200], shot: [1500, 1800] };
+  let hide;
+  window.mt.on('overlay:toast', (t) => {
+    if (t.sound) { ctx.resume(); tone(sounds[t.sound] || sounds.clip, t.volume ?? 0.6); }
+    if (!t.showVisual) return;
+    document.getElementById('ti').textContent = t.title || '';
+    document.getElementById('s').textContent = t.subtitle || '';
+    const i = document.getElementById('i');
+    i.className = 'icon ' + (t.kind || '');
+    i.textContent = t.kind === 'err' ? '!' : t.kind === 'rec' ? '●' : t.kind === 'mark' ? '★' : '✓';
+    const el = document.getElementById('t');
+    el.classList.add('show');
+    clearTimeout(hide);
+    hide = setTimeout(() => el.classList.remove('show'), 2800);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+Mettaloid
+
+Mettaloid is free software licensed under the GNU General Public License,
+version 2 or (at your option) any later version.
+
+This installer also includes third-party software:
+
+- OBS Studio (https://obsproject.com) - GNU GPL v2 or later.
+  Source code: https://github.com/obsproject/obs-studio
+  OBS Studio is bundled unmodified and is used as Mettaloid's recording engine.
+
+- FFmpeg (https://ffmpeg.org) - GNU GPL v3 (static build from ffmpeg-static).
+  Source code: https://ffmpeg.org/download.html
+
+- Electron, Chromium, Node.js and other open-source components under their
+  respective licenses (see LICENSES.chromium.html in the install folder).
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. See the
+GNU General Public License for more details: https://www.gnu.org/licenses/

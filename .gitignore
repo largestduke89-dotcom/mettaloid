@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+release/
+vendor/
+legacy-electron/node_modules/
+legacy-electron/dist/
+legacy-electron/release/
+legacy-electron/vendor/
+legacy-electron/findframe-engine/.venv/
+legacy-electron/findframe-engine/build/
+legacy-electron/findframe-engine/dist/
+*.log

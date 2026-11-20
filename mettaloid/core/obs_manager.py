@@ -9,6 +9,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import Future
@@ -28,6 +29,12 @@ IN_WINDOW = "MT Window Capture"  # Windows Graphics Capture - works where game h
 SOURCES = {"game": IN_GAME, "window": IN_WINDOW, "display": IN_DISPLAY}
 IN_GAME_AUDIO, IN_DISCORD = "MT Game Audio", "MT Discord"
 IN_DESKTOP, IN_MIC = "MT Desktop Audio", "MT Microphone"
+IN_APP = "MT App: "  # + exe: per-app audio capture feeding track 2, so Discord stays out of it
+DISCORD_EXES = {"discord.exe", "discordptb.exe", "discordcanary.exe"}
+SKIP_APP_EXES = {"obs64.exe", "mettaloid.exe", "explorer.exe", "textinputhost.exe", "applicationframehost.exe", "shellexperiencehost.exe",
+                 "searchhost.exe", "startmenuexperiencehost.exe", "systemsettings.exe", os.path.basename(sys.executable).lower()}
+MAX_APPS = 24
+APPS_TRACK_NAME = "Game & apps"
 NOISE = "MT Noise Suppression"
 MAX_BUFFER = 1200
 PRESET_ORDER = ["quality", "balanced", "performance", "max-performance"]
@@ -452,6 +459,13 @@ class ObsManager:
         self.apply_audio()
         self.apply_monitor()
 
+    def _safe_scan_apps(self):
+        try:
+            if self.status["obsState"] == "ready":
+                self.scan_apps()
+        except Exception as e:  # noqa: BLE001
+            print("app audio scan failed:", e)
+
     def list_items(self, inp, prop):
         try:
             return self.call("GetInputPropertiesListPropertyItems", {"inputName": inp, "propertyName": prop}).get("propertyItems") or []
@@ -483,7 +497,10 @@ class ObsManager:
         self.safe("SetInputSettings", {"inputName": d, "inputSettings": {"device_id": a["desktopDevice"] or "default"}})
         self.safe("SetInputVolume", {"inputName": d, "inputVolumeMul": a["desktopVolume"]})
         self.safe("SetInputMute", {"inputName": d, "inputMuted": a["gameAudioOnly"]})
-        self.safe("SetInputAudioTracks", {"inputName": d, "inputAudioTracks": tracks([1, 2])})
+        # With a separate Discord track, track 2 is built from per-app captures (everything except Discord)
+        # instead of desktop audio, which would include Discord and make it impossible to mute in the editor.
+        split = bool(a["separateDiscordTrack"]) and not a["gameAudioOnly"]
+        self.safe("SetInputAudioTracks", {"inputName": d, "inputAudioTracks": tracks([1] if split else [1, 2])})
         self.safe("SetInputAudioTracks", {"inputName": IN_GAME_AUDIO, "inputAudioTracks": tracks([1, 2])})
         self.safe("SetInputVolume", {"inputName": IN_GAME_AUDIO, "inputVolumeMul": a["desktopVolume"]})
         self.set_item_enabled(IN_GAME_AUDIO, a["gameAudioOnly"] and bool(self.status["game"]))
@@ -498,12 +515,55 @@ class ObsManager:
         self.safe("SetSourceFilterEnabled", {"sourceName": m, "filterName": NOISE, "filterEnabled": bool(a["noiseSuppression"])})
         self.safe("SetInputAudioTracks", {"inputName": IN_DISCORD, "inputAudioTracks": tracks([1, 4] if a["gameAudioOnly"] else [4])})
         if a["separateDiscordTrack"]:
-            item = next((i for i in self.list_items(IN_DISCORD, "window") if i["itemValue"].lower().endswith(":discord.exe")), None)
+            item = next((i for i in self.list_items(IN_DISCORD, "window") if i["itemValue"].rsplit(":", 1)[-1].lower() in DISCORD_EXES), None)
             if item:
                 self.safe("SetInputSettings", {"inputName": IN_DISCORD, "inputSettings": {"window": item["itemValue"], "priority": 2}})
             self.set_item_enabled(IN_DISCORD, bool(item))
         else:
             self.set_item_enabled(IN_DISCORD, False)
+        self.apps_split = split
+        self.scan_apps(configure=True)
+
+    def scan_apps(self, configure=False):
+        """Give every running app (except Discord / ourselves) its own application-audio capture on track 2.
+        New apps are picked up by the periodic rescan; captures follow the exe, so restarted apps keep working."""
+        a = self.settings.get()["audio"]
+        ex = self.input_names()
+        mine = [n for n in ex if n.startswith(IN_APP)]
+        if not getattr(self, "apps_split", False):
+            if configure:
+                for n in mine:
+                    self.set_item_enabled(n, False)
+            return
+        running = {}
+        for it in self.list_items(IN_DISCORD, "window"):
+            v = it.get("itemValue") or ""
+            exe = v.rsplit(":", 1)[-1].lower()
+            if exe.endswith(".exe") and exe not in DISCORD_EXES and exe not in SKIP_APP_EXES:
+                running.setdefault(exe, v)
+        new = []
+        for exe, v in running.items():
+            name = IN_APP + exe
+            if name in ex:
+                continue
+            if len(mine) >= MAX_APPS:  # recycle a capture whose app isn't running any more
+                stale = next((n for n in mine if n[len(IN_APP):] not in running), None)
+                if not stale:
+                    break
+                self.safe("RemoveInput", {"inputName": stale})
+                mine.remove(stale)
+            try:
+                self.ensure_input(ex, name, "wasapi_process_output_capture", {"window": v, "priority": 2})
+            except Exception as e:  # noqa: BLE001
+                print("app audio capture failed:", exe, e)
+                continue
+            mine.append(name)
+            new.append(name)
+        for n in (mine if configure else new):
+            self.safe("SetInputAudioTracks", {"inputName": n, "inputAudioTracks": tracks([2])})
+            self.safe("SetInputVolume", {"inputName": n, "inputVolumeMul": a["desktopVolume"]})
+            self.safe("SetInputMute", {"inputName": n, "inputMuted": False})
+            self.set_item_enabled(n, True)
 
     # ---------------------------------------------------------------- capture / games
     def find_window(self, exe, inp=IN_GAME):
@@ -805,6 +865,9 @@ class ObsManager:
             except Exception:  # noqa: BLE001
                 continue
             prev, self.last_stats = self.last_stats, st
+            self.stats_ticks = getattr(self, "stats_ticks", 0) + 1
+            if self.stats_ticks % 5 == 0 and getattr(self, "apps_split", False):
+                self.submit(self._safe_scan_apps)  # pick up apps started since the last scan (~every 15 s)
             if not prev:
                 continue
             d = lambda k: max(0, st[k] - prev[k])  # noqa: E731

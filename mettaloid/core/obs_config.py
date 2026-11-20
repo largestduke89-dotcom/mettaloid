@@ -121,7 +121,7 @@ def write_obs_config(config_root, settings, profile_name, staging_dir, base_size
             "RecEncoder": enc, "RecUseRescale": False, "RecTracks": track_mask(audio), "RecAudioEncoder": "ffmpeg_aac",
             "RecRB": True, "RecRBTime": int(plan["seconds"]), "RecRBSize": int(plan["memoryMB"]), "RecRBPrefix": "Replay", "RecSplitFile": False,
             "Track1Bitrate": akbps, "Track2Bitrate": akbps, "Track3Bitrate": akbps, "Track4Bitrate": akbps,
-            "Track1Name": "Mix", "Track2Name": "Game" if audio["gameAudioOnly"] else "Desktop", "Track3Name": "Microphone", "Track4Name": "Discord",
+            "Track1Name": "Mix", "Track2Name": "Game" if audio["gameAudioOnly"] else ("Game & apps" if audio["separateDiscordTrack"] else "Desktop"), "Track3Name": "Microphone", "Track4Name": "Discord",
         },
         "SimpleOutput": {"FilePath": staging, "RecRB": True, "RecRBTime": int(plan["seconds"])},
         "Video": {"BaseCX": base_size[0], "BaseCY": base_size[1], "OutputCX": out[0], "OutputCY": out[1], "FPSType": 1, "FPSInt": fps, "FPSCommon": fps,

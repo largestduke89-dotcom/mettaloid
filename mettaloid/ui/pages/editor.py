@@ -27,7 +27,19 @@ LOOKS = [("None", {}), ("Vivid", {"contrast": 1.12, "saturation": 1.35, "sharpen
          ("B&W", {"saturation": 0.0, "contrast": 1.2}), ("Warm", {"hue": -8, "saturation": 1.15}), ("Cool", {"hue": 10, "saturation": 1.05})]
 ASPECTS = [("source", "Original"), ("16:9", "16:9"), ("9:16", "9:16 (TikTok/Shorts)"), ("1:1", "1:1"), ("4:5", "4:5"), ("21:9", "21:9")]
 SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
-TRACK_NAMES = ["Mix (all audio)", "Game / desktop", "Microphone", "Discord"]
+TRACK_NAMES = ["Mix (all audio)", "Game & apps", "Microphone", "Discord"]
+
+
+def discord_split(tracks):
+    """True for recordings whose track 2 excludes Discord (named "Game & apps" by the recorder). Older clips
+    recorded desktop audio there, which already contains Discord."""
+    return len(tracks) > 3 and (tracks[1].get("title") or "").lower() == "game & apps"
+
+
+def track_name(tracks, i):
+    if i == 1 and len(tracks) > 3 and not discord_split(tracks) and (tracks[1].get("title") or "").lower() == "desktop":
+        return "Desktop (includes Discord)"
+    return TRACK_NAMES[i] if i < len(TRACK_NAMES) else (tracks[i].get("title") or f"Track {i + 1}")
 
 
 def clamp(v, a, b):
@@ -101,7 +113,7 @@ def default_project(clips, start=None, end=None, seg=None):
     return {
         "sources": [c["path"] for c in clips], "segments": segments, "crop": None, "rotate": 0, "flipH": False, "flipV": False,
         "aspect": "source", "fit": "crop", "color": dict(DEFAULT_COLOR), "fadeIn": 0.0, "fadeOut": 0.0, "texts": [],
-        "audio": {"tracks": [{"index": i, "title": t["title"], "volume": 1.0, "muted": (i == 0 or i >= 3) if len(tracks) > 1 else False} for i, t in enumerate(tracks)],
+        "audio": {"tracks": [{"index": i, "title": t["title"], "volume": 1.0, "muted": (i == 0 or (i >= 3 and not discord_split(tracks))) if len(tracks) > 1 else False} for i, t in enumerate(tracks)],
                   "normalize": False, "music": None},
         "output": {"resolution": "source", "fps": "source", "format": "mp4", "codec": "h264", "quality": "high", "targetMB": 0, "encoder": "auto",
                    "mode": "encode", "audioKbps": 160, "autoDownscale": True, "twoPass": True},
@@ -1131,7 +1143,7 @@ class EditorPage(Page):
                 fr.setObjectName("inset")
                 fl = QVBoxLayout(fr)
                 fl.setContentsMargins(12, 10, 12, 10)
-                name = TRACK_NAMES[i] if len(a["tracks"]) > 1 and i < len(TRACK_NAMES) else t.get("title", "Audio")
+                name = track_name(a["tracks"], i) if len(a["tracks"]) > 1 else t.get("title", "Audio")
                 mute = btn("", "micOff" if t.get("muted") else "volume", lambda i=i: self.commit(lambda q: q["audio"]["tracks"][i].__setitem__("muted", not q["audio"]["tracks"][i].get("muted"))), sm=True, danger=t.get("muted"))
                 fl.addWidget(hbox(QLabel(f"<b>{name}</b>"), "stretch", mute))
                 s = FSlider(0, 2, 0.05, t.get("volume", 1), fmt=lambda x: f"{int(x * 100)}%")

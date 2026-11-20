@@ -580,7 +580,8 @@ class SettingsPage(Page):
                 opts.append((cur, "Saved device (not connected)" if lst else "Saved device"))
             cb.set_options(opts, cur)
             cb.setToolTip(cb.currentText())
-        n = "Tracks in every recording: 1 = full mix · 2 = game/desktop · 3 = microphone · 4 = Discord"
+        n = ("Tracks in every recording: 1 = full mix · 2 = game & apps (everything except Discord) · 3 = microphone · 4 = Discord"
+             if a["separateDiscordTrack"] and not a["gameAudioOnly"] else "Tracks in every recording: 1 = full mix · 2 = game/desktop · 3 = microphone · 4 = Discord")
         if self._devices_loading:
             n += "<br>Loading audio devices…"
         elif not (self.devices["outputs"] or self.devices["inputs"]):
